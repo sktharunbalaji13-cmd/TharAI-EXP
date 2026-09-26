@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from babylab.errors import BabyLabError
 from babylab.identity import Actor, Role
@@ -27,7 +28,7 @@ from babylab.paths import default_paths
 from babylab.trust import PathPolicy
 from provenance.keyring import Keyring
 from provenance.ledger import ProvenanceLedger
-from provenance.recorder import ProvenanceRecorder
+from provenance.recorder import ProvenanceRecorder, classify_problem, problem_path
 
 
 def _components():
@@ -126,46 +127,78 @@ def cmd_seal(args: argparse.Namespace) -> int:
 def cmd_record(args: argparse.Namespace) -> int:
     """Bring the ledger up to date with what is actually on disk.
 
-    This exists because creating a research file outside the recorder is
-    normal: an operator writes the experiment log in an editor, not through an
-    API. The audit then correctly reports an unrecorded creation, and the fix
-    is to record it under the human key, never to weaken the audit.
+    This exists because creating *or editing* a research file outside the
+    recorder is normal: an operator writes the experiment log in an editor, not
+    through an API. The audit then correctly reports an unrecorded creation or
+    modification, and the fix is to record it under the human key, never to
+    weaken the audit.
+
+    The action is chosen per file from what the audit reports, so ``record``
+    with no ``--path`` does the right thing for whatever drifted. Naming a file
+    explicitly overrides that, which is what you want when you know you edited
+    something and want to be explicit about it.
     """
     paths, keyring, ledger, _, recorder = _components()
     entry = keyring.key_for_role(Role.HUMAN)
     actor = Actor.human_operator(key_id=entry.key_id)
 
-    targets: list[Path] = []
+    problems = recorder.verify_paths()
+
+    def action_for(relative: str) -> str | None:
+        """Which action the audit says this relative path needs."""
+        for problem in problems:
+            if problem_path(problem) != relative:
+                continue
+            action = classify_problem(problem)
+            if action is not None:
+                return action
+        return None
+
+    targets: list[tuple[Path, str]] = []
     if args.path:
         for raw in args.path:
             candidate = Path(raw)
             if not candidate.is_absolute():
                 candidate = paths.root / candidate
-            if not candidate.exists():
-                print(f"error: no such file: {raw}", file=sys.stderr)
+            relative = paths.relative(candidate)
+            action = action_for(relative) or (
+                None if args.action == "auto" else args.action
+            )
+            if action is None:
+                # Naming a file that the audit considers intact is a mistake
+                # worth surfacing: recording it anyway would put a false entry
+                # in a research record.
+                if not candidate.exists():
+                    print(f"error: no such file: {raw}", file=sys.stderr)
+                else:
+                    print(
+                        f"error: {relative} needs no recording: the ledger already "
+                        f"matches what is on disk. Pass --action "
+                        f"create|modify|delete to record it anyway.",
+                        file=sys.stderr,
+                    )
                 return 2
-            targets.append(candidate)
+            targets.append((candidate, action))
     else:
-        problems = recorder.verify_paths()
         for problem in problems:
-            if "unrecorded creation" not in problem:
-                continue
-            relative = problem.split(":", 1)[0]
-            targets.append(paths.root / relative)
+            action = classify_problem(problem)
+            if action is not None:
+                targets.append((paths.root / problem_path(problem), action))
 
     if not targets:
         print("nothing to record: every protected file is already in the ledger")
         return 0
 
-    for target in sorted(set(targets)):
+    reason = args.reason or "recorded by operator"
+    for target, action in sorted(set(targets)):
         relative = paths.relative(target)
-        recorded = recorder.record_creation(
-            target,
-            actor,
-            args.milestone,
-            args.reason or f"recorded by operator: {relative}",
-        )
-        print(f"recorded {relative} as {recorded.entry_id} ({recorded.author.value})")
+        if action == "modify":
+            recorded = recorder.record_modification(target, actor, args.milestone, reason)
+        elif action == "delete":
+            recorded = recorder.record_deletion(target, actor, args.milestone, reason)
+        else:
+            recorded = recorder.record_creation(target, actor, args.milestone, reason)
+        print(f"recorded {action} of {relative} as {recorded.entry_id} ({recorded.author.value})")
 
     print("")
     print("Now re-seal so the new head is anchored:")
@@ -225,15 +258,29 @@ def build_parser() -> argparse.ArgumentParser:
 
     record = sub.add_parser(
         "record",
-        help="record protected files that exist on disk but not in the ledger",
+        help="record protected files whose on-disk state differs from the ledger",
     )
     record.add_argument(
         "--path",
         action="append",
-        help="specific file to record; repeatable. Default: every unrecorded creation",
+        help=(
+            "specific file to record; repeatable. Default: every file the audit "
+            "reports as unrecorded"
+        ),
+    )
+    record.add_argument(
+        "--action",
+        choices=("auto", "create", "modify", "delete"),
+        default="auto",
+        help=(
+            "how to record a named file. 'auto' (default) takes the action the "
+            "audit reports; the others record it explicitly"
+        ),
     )
     record.add_argument("--milestone", default="MILESTONE-001")
-    record.add_argument("--reason", default="", help="why these files were created")
+    record.add_argument(
+        "--reason", default="", help="why these files were created, changed, or removed"
+    )
     record.set_defaults(func=cmd_record)
 
     keyring_cmd = sub.add_parser("keyring", help="list registered keys and audit their material")

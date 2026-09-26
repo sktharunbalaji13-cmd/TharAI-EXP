@@ -40,6 +40,7 @@ DIRECTORIES = (
     "baby_workspace/memory",
     "baby_workspace/temporary",
     "observer",
+    "observatory",
     "control",
     "events",
     "provenance",
@@ -53,8 +54,16 @@ DIRECTORIES = (
 )
 
 #: Directories that hold Python packages. They must never contain runtime
-#: data, keys, or logs. Enforced by tests/test_layout.py.
-CODE_DIRECTORIES = ("babylab", "events", "provenance", "observer", "control", "tests")
+#: data, keys, or logs. Enforced by tests/test_trust_boundaries.py.
+CODE_DIRECTORIES = (
+    "babylab",
+    "events",
+    "provenance",
+    "observer",
+    "observatory",
+    "control",
+    "tests",
+)
 
 
 @dataclass(frozen=True)

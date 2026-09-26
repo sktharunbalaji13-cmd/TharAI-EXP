@@ -220,7 +220,14 @@ class EventStore:
                     return
 
     @staticmethod
-    def _parse_line(line_number: int, raw: str) -> StoredEvent:
+    def parse_line(line_number: int, raw: str) -> StoredEvent:
+        """Parse one log line into a :class:`StoredEvent`.
+
+        Public so that incremental consumers (see :mod:`observatory.reader`)
+        reuse exactly the same parsing and fault-reporting rules as a full
+        replay. Two parsers would be two sets of error messages for the same
+        corruption, and they would eventually disagree.
+        """
         text = raw.strip()
         if not text:
             return StoredEvent(line_number, raw, None, "blank line")
@@ -229,6 +236,9 @@ class EventStore:
         except ValidationError as exc:
             return StoredEvent(line_number, raw, None, str(exc))
         return StoredEvent(line_number, raw, event, None)
+
+    #: Retained so existing callers inside this module keep working.
+    _parse_line = parse_line
 
     # -- integrity --------------------------------------------------------
     def verify_chain(self) -> ChainReport:

@@ -40,6 +40,37 @@ from provenance.ledger import Action, LedgerEntry, ProvenanceLedger
 #: real digest-shaped value keeps the field type stable in the ledger.
 ABSENT_SHA256 = "0" * 64
 
+#: Substrings that identify each kind of discrepancy emitted by
+#: :meth:`ProvenanceRecorder.verify_paths`. Kept beside the messages that
+#: produce them so that rephrasing a message and updating its classifier are one
+#: edit, not two.
+PROBLEM_CREATION = "unrecorded creation"
+PROBLEM_MODIFICATION = "content differs from"
+PROBLEM_DELETION = "unrecorded deletion"
+
+
+def classify_problem(problem: str) -> str | None:
+    """Return ``"create"``, ``"modify"``, ``"delete"``, or ``None`` for a
+    discrepancy reported by :meth:`ProvenanceRecorder.verify_paths`.
+
+    ``verify_paths`` returns prose because prose is what a human reading an
+    audit report needs. Anything that needs to *act* on a discrepancy - such as
+    ``provenance.cli record`` - should ask here rather than matching on the
+    wording, so that improving the message cannot silently break the repair path.
+    """
+    if PROBLEM_CREATION in problem:
+        return "create"
+    if PROBLEM_DELETION in problem:
+        return "delete"
+    if PROBLEM_MODIFICATION in problem:
+        return "modify"
+    return None
+
+
+def problem_path(problem: str) -> str:
+    """The protected-area path a discrepancy refers to."""
+    return problem.split(":", 1)[0].strip()
+
 
 @dataclass(frozen=True)
 class FileState:
@@ -215,6 +246,10 @@ class ProvenanceRecorder:
           areas exist to prevent.
 
         Returns a list of human-readable discrepancies; empty means intact.
+
+        The messages are prose, because they are read by a human running an
+        audit. Anything that needs to act on them programmatically should use
+        :func:`classify_problem` rather than matching on the wording.
         """
         problems: list[str] = []
         excluded = [

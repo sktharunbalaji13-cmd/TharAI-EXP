@@ -28,7 +28,12 @@ from babylab.hashing import canonical_json
 from babylab.identity import Actor, Role
 from provenance.keyring import Keyring
 from provenance.ledger import Action, UNTRUSTED_METADATA_KEYS, LedgerEntry
-from provenance.recorder import ABSENT_SHA256, FileState
+from provenance.recorder import (
+    ABSENT_SHA256,
+    FileState,
+    classify_problem,
+    problem_path,
+)
 
 MILESTONE = "MILESTONE-001"
 
@@ -540,6 +545,164 @@ class PlaceholderExclusionTests(LabTestCase):
             with self.subTest(name=name):
                 self.assertTrue(reason.strip(), "an exclusion must justify itself")
                 self.assertGreater(len(reason), 40, "a bare assertion is not a reason")
+
+
+class RepairPathTests(LabTestCase):
+    """An operator must be able to repair the ledger after a legitimate edit.
+
+    Editing a protected file in an editor is normal, so the audit will
+    correctly report it. What must exist is a supported way to record the change
+    afterwards. Without one, the only ways forward are to weaken the audit or to
+    leave verification failing, and both are worse than a recorded MODIFY.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.target = self.write("research/experiment-log.md", "first entry")
+
+    def test_creation_is_classified(self):
+        self.recorder.record_creation(
+            self.target, self.human, MILESTONE, "create"
+        )
+        # Recorded and unchanged: nothing to repair.
+        self.assertEqual(self.recorder.verify_paths(), [])
+
+    def test_modification_is_classified_as_modify(self):
+        self.recorder.record_creation(
+            self.target, self.human, MILESTONE, "create"
+        )
+        self.target.write_text("first entry\nsecond entry", encoding="utf-8")
+        problems = self.recorder.verify_paths()
+        self.assertEqual(len(problems), 1)
+        self.assertEqual(classify_problem(problems[0]), "modify")
+        self.assertEqual(problem_path(problems[0]), "research/experiment-log.md")
+
+    def test_deletion_is_classified_as_delete(self):
+        self.recorder.record_creation(
+            self.target, self.human, MILESTONE, "create"
+        )
+        self.target.unlink()
+        problems = self.recorder.verify_paths()
+        self.assertEqual([classify_problem(p) for p in problems], ["delete"])
+
+    def test_unrecorded_creation_is_classified(self):
+        problems = self.recorder.verify_paths()
+        self.assertEqual([classify_problem(p) for p in problems], ["create"])
+
+    def test_an_unrecognised_problem_is_not_forced_into_a_category(self):
+        # Guessing here would let a repair path act on something it does not
+        # understand, which is exactly the failure the classification prevents.
+        self.assertIsNone(classify_problem("something else entirely"))
+        self.assertIsNone(classify_problem(""))
+
+    def test_recording_the_modification_restores_a_clean_audit(self):
+        self.recorder.record_creation(
+            self.target, self.human, MILESTONE, "create"
+        )
+        self.target.write_text("first entry\nsecond entry", encoding="utf-8")
+        self.assertNotEqual(self.recorder.verify_paths(), [])
+
+        self.recorder.record_modification(
+            self.target, self.human, MILESTONE, "appended an entry"
+        )
+        self.assertEqual(self.recorder.verify_paths(), [])
+
+    def test_the_version_chain_links_the_two_edits(self):
+        first = self.recorder.record_creation(
+            self.target, self.human, MILESTONE, "create"
+        )
+        self.target.write_text("first entry\nsecond entry", encoding="utf-8")
+        second = self.recorder.record_modification(
+            self.target, self.human, MILESTONE, "appended an entry"
+        )
+        self.assertEqual(second.prev_version_id, first.entry_id)
+
+    def test_the_repair_is_signed_by_the_human_key(self):
+        self.recorder.record_creation(
+            self.target, self.human, MILESTONE, "create"
+        )
+        self.target.write_text("first entry\nsecond entry", encoding="utf-8")
+        entry = self.recorder.record_modification(
+            self.target, self.human, MILESTONE, "appended an entry"
+        )
+        self.assertEqual(entry.author, Role.HUMAN)
+        self.assertEqual(self.ledger.verify().problems, [])
+
+
+class RecordCommandTests(LabTestCase):
+    """The operator-facing repair path, exercised through the real CLI."""
+
+    def setUp(self):
+        super().setUp()
+        self.target = self.write("research/experiment-log.md", "first entry")
+
+    def run_cli(self, *args):
+        import contextlib
+        import io
+
+        from provenance import cli
+
+        buffer = io.StringIO()
+        errors = io.StringIO()
+        with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(errors):
+            code = cli.main(list(args))
+        return code, buffer.getvalue() + errors.getvalue()
+
+    def test_record_reports_nothing_to_do_when_the_ledger_matches(self):
+        code, output = self.run_cli("record", "--reason", "create")
+        self.assertEqual(code, 0)
+        self.assertIn("recorded create", output)
+
+    def test_second_record_with_nothing_changed_says_so(self):
+        self.run_cli("record", "--reason", "create")
+        code, output = self.run_cli("record", "--reason", "again")
+        self.assertEqual(code, 0)
+        self.assertIn("nothing to record", output)
+
+    def test_recording_a_modification_restores_verification(self):
+        self.run_cli("record", "--reason", "create")
+        self.target.write_text("first entry\nsecond entry", encoding="utf-8")
+
+        code, output = self.run_cli("record", "--reason", "appended an entry")
+        self.assertEqual(code, 0)
+        self.assertIn("recorded modify", output)
+        self.assertEqual(self.recorder.verify_paths(), [])
+
+    def test_verify_exits_zero_after_the_repair(self):
+        self.run_cli("record", "--reason", "create")
+        self.target.write_text("first entry\nsecond entry", encoding="utf-8")
+        self.run_cli("record", "--reason", "appended an entry")
+        code, _ = self.run_cli("verify")
+        self.assertEqual(code, 0)
+
+    def test_naming_a_clean_file_without_an_action_is_refused(self):
+        # Recording a modification that did not happen would put a false entry
+        # in a research record, so the CLI declines rather than inventing one.
+        self.run_cli("record", "--reason", "create")
+        code, output = self.run_cli(
+            "record", "--path", "research/experiment-log.md", "--reason", "nothing changed"
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("needs no recording", output)
+
+    def test_an_explicit_action_overrides_the_audit(self):
+        self.run_cli("record", "--reason", "create")
+        code, output = self.run_cli(
+            "record",
+            "--path",
+            "research/experiment-log.md",
+            "--action",
+            "modify",
+            "--reason",
+            "explicit",
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("recorded modify", output)
+
+    def test_a_missing_named_file_is_an_error(self):
+        code, output = self.run_cli("record", "--path", "research/nope.md")
+        self.assertEqual(code, 2)
+        self.assertIn("no such file", output)
 
 
 if __name__ == "__main__":
