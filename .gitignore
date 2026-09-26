@@ -1,0 +1,107 @@
+# ---------------------------------------------------------------------------
+# Baby AI Laboratory - Milestone 001
+# ---------------------------------------------------------------------------
+# This file is the enforcement behind the policy stated in
+# docs/git-integration.md. If the two ever disagree, that is a bug: the
+# documentation is the intent, this file is the mechanism.
+# ---------------------------------------------------------------------------
+
+# --- Secrets and key material ---------------------------------------------
+# Never commit these. A key in a repository is a key in every clone of it.
+*.key
+*.pem
+*.pfx
+*.p12
+human_control/security/keys/private/
+human_control/security/control.token
+human_control/security/*.token
+
+# --- Runtime research data -------------------------------------------------
+# ALL runtime data lives under var/ (event log, provenance ledger).
+# It is integrity-sealed, not version-controlled: Git does not preserve
+# append-only semantics and a Git history can be rewritten wholesale.
+#
+# The ledger is deliberately NOT tracked. It records digests of files in
+# human_control/, including the control token. Keeping it out of version
+# control means those digests never reach a published repository.
+var/
+
+# Defensive: refuse runtime artefacts even if they are ever moved.
+*.jsonl
+*.jsonl.*
+*.log
+
+# Torn/partial writes from atomic-rename helpers.
+*.tmp
+*.partial
+*.bak
+*.orig
+
+# --- Operator area: scaffolding only ---------------------------------------
+# human_control/ holds operator-generated research records, not source. The
+# directory layout is preserved with .gitkeep files so a fresh clone has the
+# expected structure, but its contents stay out of Git.
+human_control/*
+!human_control/.gitkeep
+!human_control/*/
+human_control/*/*
+!human_control/*/.gitkeep
+!human_control/*/*/
+human_control/*/*/*
+!human_control/*/*/.gitkeep
+!human_control/*/*/*/
+
+# --- Subject workspace -----------------------------------------------------
+# Reserved for the future subject. Generated artefacts are observations, and
+# the subject's own writes are recorded in the ledger, not in Git.
+baby_workspace/*
+!baby_workspace/.gitkeep
+!baby_workspace/*/
+baby_workspace/*/*
+!baby_workspace/*/.gitkeep
+
+# --- Environment specific machine data -------------------------------------
+.env
+.env.*
+!.env.example
+TharAI-EXP.local.json
+local_settings.json
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test / type caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+desktop.ini
+.DS_Store
+$RECYCLE.BIN/

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "babylab"
+version = "0.1.0"
+description = "Baby AI Research Project - experimental laboratory infrastructure (Milestone 001)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Baby AI Research Project" }]
+keywords = ["research", "provenance", "observability", "event-sourcing"]
+
+# ---------------------------------------------------------------------------
+# RUNTIME DEPENDENCIES: NONE.
+#
+# Milestone 001 is implemented entirely against the Python standard library.
+# See docs/development-log.md ("Dependency Policy") and ADR-002.
+#
+# Standard-library modules relied upon:
+#   hashlib, hmac, secrets, json, socket, threading, subprocess, unittest,
+#   argparse, dataclasses, datetime, pathlib, os, sys, tempfile, shutil
+# ---------------------------------------------------------------------------
+dependencies = []
+
+[project.optional-dependencies]
+# Development-only. Pinned. NOT required to run the system or the test suite.
+dev = [
+    "pytest==8.3.4",
+]
+
+[project.scripts]
+babylab-observer = "observer.cli:main"
+babylab-control = "control.cli:main"
+babylab-integrity = "provenance.cli:main"
+
+[tool.setuptools]
+packages = [
+    "babylab",
+    "events",
+    "observer",
+    "control",
+    "provenance",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
