@@ -48,6 +48,7 @@ python -m observer.cli --namespace security --detail
 # Integrity
 python -m provenance.cli verify
 python -m provenance.cli seal --reason "pre-run baseline"
+python -m provenance.cli record --reason "wrote the run notes"   # file created outside the recorder
 
 # Control process
 python -m control.cli serve

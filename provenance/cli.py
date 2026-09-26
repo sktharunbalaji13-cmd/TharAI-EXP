@@ -62,6 +62,10 @@ def cmd_verify(args: argparse.Namespace) -> int:
                         {"path": paths.relative(root), "reason": reason}
                         for root, reason in recorder.untracked_by_design()
                     ],
+                    "untracked_placeholders": [
+                        {"name": name, "reason": reason}
+                        for name, reason in recorder.untracked_placeholders()
+                    ],
                 },
                 indent=2,
                 sort_keys=True,
@@ -93,6 +97,17 @@ def cmd_verify(args: argparse.Namespace) -> int:
             print(f"    ! {problem}")
         for problem in key_problems:
             print(f"    ! {problem}")
+        # Print the exclusions every time. An exclusion nobody is shown is an
+        # exclusion nobody is reviewing, and a hole in the report that nobody
+        # can see is the worst kind.
+        print("")
+        print("  Deliberately not tracked inside protected areas:")
+        for root, reason in recorder.untracked_by_design():
+            print(f"    - {paths.relative(root)}/")
+            print(f"        {reason}")
+        for name, reason in recorder.untracked_placeholders():
+            print(f"    - {name} (any protected directory)")
+            print(f"        {reason}")
 
     ok = report.intact and (seal_report is None or seal_report.intact)
     ok = ok and not path_problems and not key_problems
@@ -105,6 +120,56 @@ def cmd_seal(args: argparse.Namespace) -> int:
     actor = Actor.human_operator(key_id=entry.key_id)
     path = ledger.seal(actor, note=args.reason)
     print(f"sealed head {ledger.head().entry_id} -> {path}")
+    return 0
+
+
+def cmd_record(args: argparse.Namespace) -> int:
+    """Bring the ledger up to date with what is actually on disk.
+
+    This exists because creating a research file outside the recorder is
+    normal: an operator writes the experiment log in an editor, not through an
+    API. The audit then correctly reports an unrecorded creation, and the fix
+    is to record it under the human key, never to weaken the audit.
+    """
+    paths, keyring, ledger, _, recorder = _components()
+    entry = keyring.key_for_role(Role.HUMAN)
+    actor = Actor.human_operator(key_id=entry.key_id)
+
+    targets: list[Path] = []
+    if args.path:
+        for raw in args.path:
+            candidate = Path(raw)
+            if not candidate.is_absolute():
+                candidate = paths.root / candidate
+            if not candidate.exists():
+                print(f"error: no such file: {raw}", file=sys.stderr)
+                return 2
+            targets.append(candidate)
+    else:
+        problems = recorder.verify_paths()
+        for problem in problems:
+            if "unrecorded creation" not in problem:
+                continue
+            relative = problem.split(":", 1)[0]
+            targets.append(paths.root / relative)
+
+    if not targets:
+        print("nothing to record: every protected file is already in the ledger")
+        return 0
+
+    for target in sorted(set(targets)):
+        relative = paths.relative(target)
+        recorded = recorder.record_creation(
+            target,
+            actor,
+            args.milestone,
+            args.reason or f"recorded by operator: {relative}",
+        )
+        print(f"recorded {relative} as {recorded.entry_id} ({recorded.author.value})")
+
+    print("")
+    print("Now re-seal so the new head is anchored:")
+    print(f"  python -m provenance.cli seal --reason \"{args.reason or 'post-record'}\"")
     return 0
 
 
@@ -157,6 +222,19 @@ def build_parser() -> argparse.ArgumentParser:
     seal = sub.add_parser("seal", help="anchor the current ledger head under the human key")
     seal.add_argument("--reason", default="", help="note stored with the seal")
     seal.set_defaults(func=cmd_seal)
+
+    record = sub.add_parser(
+        "record",
+        help="record protected files that exist on disk but not in the ledger",
+    )
+    record.add_argument(
+        "--path",
+        action="append",
+        help="specific file to record; repeatable. Default: every unrecorded creation",
+    )
+    record.add_argument("--milestone", default="MILESTONE-001")
+    record.add_argument("--reason", default="", help="why these files were created")
+    record.set_defaults(func=cmd_record)
 
     keyring_cmd = sub.add_parser("keyring", help="list registered keys and audit their material")
     keyring_cmd.add_argument("--json", action="store_true")

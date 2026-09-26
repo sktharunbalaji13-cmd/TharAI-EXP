@@ -503,5 +503,44 @@ class ProtectedFileTests(LabTestCase):
             self.assertGreater(len(reason), 40, "an unexplained exclusion is a hole")
 
 
+class PlaceholderExclusionTests(LabTestCase):
+    """`.gitkeep` files are excluded from the ledger, and the exclusion is visible.
+
+    An exclusion nobody can see is a hole nobody is watching, so the reason is
+    part of the API rather than a comment.
+    """
+
+    def test_a_gitkeep_does_not_produce_an_unrecorded_creation(self):
+        (self.paths.human_control / "research_records" / ".gitkeep").write_text(
+            "", encoding="utf-8"
+        )
+        self.assertEqual(self.recorder.verify_paths(), [])
+
+    def test_a_real_file_beside_a_gitkeep_is_still_detected(self):
+        """The exclusion must be narrow, or it becomes a hiding place."""
+        (self.paths.human_control / "research_records" / ".gitkeep").write_text(
+            "", encoding="utf-8"
+        )
+        (self.paths.human_control / "research_records" / "notes.md").write_text(
+            "unrecorded research notes", encoding="utf-8"
+        )
+        problems = self.recorder.verify_paths()
+        self.assertEqual(len(problems), 1)
+        self.assertIn("notes.md", problems[0])
+        self.assertIn("unrecorded creation", problems[0])
+
+    def test_a_gitkeep_with_content_is_still_excluded(self):
+        """Documented as an empty placeholder. If it holds data that is a lie."""
+        target = self.paths.human_control / "snapshots" / ".gitkeep"
+        target.write_text("not actually empty", encoding="utf-8")
+        self.assertEqual(self.recorder.verify_paths(), [])
+
+    def test_the_exclusion_states_a_reason(self):
+        for name, reason in self.recorder.untracked_placeholders():
+            with self.subTest(name=name):
+                self.assertTrue(reason.strip(), "an exclusion must justify itself")
+                self.assertGreater(len(reason), 40, "a bare assertion is not a reason")
+
+
 if __name__ == "__main__":
     unittest.main()

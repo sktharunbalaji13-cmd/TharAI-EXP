@@ -1,0 +1,23 @@
+# Normalise line endings so that the same file does not show as modified on
+# every checkout just because two people use different platforms. Without
+# this, a CRLF/LF mismatch produces phantom diffs in a research repository,
+# which erodes trust in the history faster than any real change does.
+* text=auto eol=lf
+
+# Windows-native formats that must stay binary.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+
+# Scripts that must remain CRLF for PowerShell 5.1 compatibility.
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# JSONL is append-only data. Never rewrite line endings inside it: a change
+# in bytes changes every digest that depends on them.
+*.jsonl text eol=lf

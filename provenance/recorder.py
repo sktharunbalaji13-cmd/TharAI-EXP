@@ -184,6 +184,25 @@ class ProvenanceRecorder:
             ),
         ]
 
+    def untracked_placeholders(self) -> list[tuple[str, str]]:
+        """Filenames inside protected areas that the ledger deliberately ignores.
+
+        Same contract as :meth:`untracked_by_design`: every exclusion carries a
+        reason, and the reasons are printable, so an exclusion cannot quietly
+        become a hole.
+        """
+        return [
+            (
+                ".gitkeep",
+                "an empty directory placeholder. Git does not track empty "
+                "directories, so these files exist only to preserve the "
+                "laboratory's shape through a clone. They carry no research "
+                "content, so a digest of zero bytes says nothing worth "
+                "protecting, and demanding one would train an operator to "
+                "ignore this report.",
+            ),
+        ]
+
     def verify_paths(self, paths: list[Path] | None = None) -> list[str]:
         """Check the ledger and the protected areas against each other.
 
@@ -203,6 +222,7 @@ class ProvenanceRecorder:
             for root, _ in self.untracked_by_design()
             if Path(root).exists()
         ]
+        placeholder_names = {name for name, _ in self.untracked_placeholders()}
 
         if paths is None:
             paths = self._protected_files()
@@ -210,6 +230,8 @@ class ProvenanceRecorder:
         checked: set[str] = set()
         for target in paths:
             resolved = Path(target).resolve()
+            if resolved.name in placeholder_names:
+                continue
             if any(_is_within(resolved, root) for root in excluded):
                 continue
             relative = self.policy.paths.relative(target)

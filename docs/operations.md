@@ -50,7 +50,30 @@ Also available:
 python -m provenance.cli summary     # entry counts by author and action
 python -m provenance.cli keyring     # registered keys, and an audit of their material
 python -m provenance.cli seal --reason "before experiment run 1"
+python -m provenance.cli record --reason "wrote the run notes"
 ```
+
+`verify` prints, every time, the list of things inside protected areas that the
+ledger deliberately does not track, with the reason for each. An exclusion
+nobody is shown is an exclusion nobody is reviewing.
+
+## Recording a file you created yourself
+
+Creating a research file outside the recorder is normal — an operator writes the
+experiment log in an editor, not through an API. `verify` will then correctly
+report an *unrecorded creation*. The fix is to record it, not to weaken the
+audit:
+
+```powershell
+python -m provenance.cli record --reason "wrote the run notes"
+python -m provenance.cli seal   --reason "run notes recorded"
+```
+
+With no `--path`, `record` picks up every unrecorded creation the audit finds.
+It signs under the `HUMAN` key, because a human did the writing.
+
+Do **not** reach for `--fast` to make a failing verify pass. `--fast` skips MAC
+verification and exists for throughput measurement, not for reassurance.
 
 ## Run the control process
 
@@ -120,9 +143,12 @@ python -m provenance.cli seal --reason "post-run baseline"
 3. Determine whether the cause is corruption (a truncated write, a full disk) or
    tampering. `verify_paths` distinguishes *unrecorded modification* from
    *unrecorded creation* from *recorded but missing*.
-4. Copy the ledger somewhere immutable before investigating. You will want the
-   original bytes.
-5. Record the finding in `research/experiment-log.md`, including the time, what
+4. If it is an unrecorded creation that you caused — writing a research note
+   outside the recorder — record it (`provenance.cli record`) and re-seal. That
+   is a bookkeeping fix, not tampering.
+5. Copy the ledger somewhere immutable before investigating anything you did not
+   cause. You will want the original bytes.
+6. Record the finding in `research/experiment-log.md`, including the time, what
    you found, and what you did. A laboratory that quietly repairs its own
    evidence teaches its operator nothing.
 
