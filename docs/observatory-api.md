@@ -35,10 +35,11 @@ built against a defined contract before any transport exists.
 }
 ```
 
-`subject.detail` is `null` when a subject is key-attached, and a string
-explaining the gap when one is not. A client should surface it: an empty
-dashboard and a dashboard reporting a missing subject are different situations,
-and only one of them means the instrument is working.
+`subject.detail` is `null` only when the subject is both key-attached and
+recorded, and a string explaining the gap in every other case: no subject, a
+record with no key, or a key with no record. A client should surface it. An
+empty dashboard and a dashboard reporting a missing subject are different
+situations, and only one of them means the instrument is working.
 
 ## subject
 

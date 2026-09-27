@@ -73,7 +73,14 @@ something" come apart.
 |---|---|---|
 | `NO_SUBJECT` | No birth record, no `BABY_AI` key. | `NO EXPERIMENTAL SUBJECT ATTACHED` |
 | `RECORDED` | A sealed birth record exists; no signing key is provisioned. | `SUBJECT RECORDED, NOT KEY-ATTACHED: <id>` |
-| `ATTACHED` | A record exists **and** a human-registered `BABY_AI` key is active. | `SUBJECT: <id>` |
+| `ATTACHED` | A human-registered `BABY_AI` key is active. | `SUBJECT: <id>` |
+
+The two sources — the birth record and the keyring — are independent, and
+`ATTACHED` keys off the keyring alone, because a signing key that exists must
+never be hidden. A key with no record is therefore attached but unrecorded, and
+carries a detail line saying no ceremony was performed. Neither mismatch is
+rounded up: `RECORDED` never implies a key, and `ATTACHED` never implies a birth
+record.
 
 `RECORDED` is the honest description of this milestone's actual outcome, and it
 is not rounded up to `ATTACHED`. A birth record is a statement by the laboratory

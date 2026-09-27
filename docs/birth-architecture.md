@@ -214,7 +214,13 @@ The Observatory reflects this with three subject states, in
   `NO EXPERIMENTAL SUBJECT ATTACHED`.
 - `RECORDED` — a sealed birth record exists, but no `BABY_AI` signing key is
   provisioned. The banner is `SUBJECT RECORDED, NOT KEY-ATTACHED`.
-- `ATTACHED` — a record exists *and* a human-registered `BABY_AI` key is active.
+- `ATTACHED` — a human-registered `BABY_AI` key is active. The banner is
+  `SUBJECT: <id>`, with a detail line when no birth record backs the key.
+
+The two sources are independent, and `ATTACHED` keys off the keyring alone,
+because a signing key that exists must never be hidden. A key with no record is
+attached but unrecorded; `observatory.subject.UNRECORDED_DETAIL` says so, since
+`SUBJECT: <id>` on its own would let a reader assume a ceremony happened.
 
 `RECORDED` is not a transitional state to be tidied away; it is the honest
 description of this milestone's real outcome, and the display says it in those

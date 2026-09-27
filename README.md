@@ -153,12 +153,14 @@ separate from cognitive state, and distinguishes three subject states:
 | --- | --- |
 | `NO_SUBJECT` | No record, no key. |
 | `RECORDED` | A birth record exists, but no `BABY_AI` signing key. |
-| `ATTACHED` | A record exists and a human-registered key is active. |
+| `ATTACHED` | A human-registered `BABY_AI` key is active. |
 
 `RECORDED` is the honest outcome of running a ceremony, and the display does not
 round it up to `ATTACHED`: a birth record says a subject was created, a signing
-key says it can prove things, and only a human can grant the second. The
-observatory reads this through `birth.status`, which is structurally incapable of
+key says it can prove things, and only a human can grant the second. The two are
+independent, and the reverse mismatch is reported too — a key with no birth
+record is attached but unrecorded, and says so. The observatory reads this
+through `birth.status`, which is structurally incapable of
 reaching the ceremony's event-append path — a test walks the import graph to
 confirm it.
 

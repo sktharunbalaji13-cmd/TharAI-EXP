@@ -352,8 +352,8 @@ Observatory. Nothing else.
 - `python -m birth.cli` with `status`, `model`, `capabilities`, `ceremony`, and
   `verify`, plus `python -m birth.real_model_test` for an explicit real-model
   check.
-- 300 new tests, 697 in total, all passing.
-- Two documents and one ADR: `docs/birth-architecture.md`,
+- 306 new tests, 703 in total, all passing.
+- One new document and one new ADR: `docs/birth-architecture.md`,
   `docs/decisions/ADR-008-inherited-substrate.md`, and updates to
   `docs/architecture.md`, `docs/observatory.md`, `docs/observatory-api.md`, and
   this file.
@@ -430,9 +430,61 @@ A second, smaller one came from the same exercise: the label `environment
 attached` overran the renderer's 18-character column and printed as
 `environment attachedno`.
 
+A third was found after the milestone was committed, by reviewing the commit
+against the documentation rather than against the tests. The `ATTACHED` subject
+state keyed off the keyring alone, while three documents claimed it required a
+birth record *and* a key. Both could not be true, and the documentation's rule
+had no state at all for a key with no record — it would have reported a live
+signing key as `NO_SUBJECT`.
+
+The code was right and the prose was wrong, for a reason worth stating: a signing
+key that exists must never be hidden, because hiding it would understate the
+system's authority. So `ATTACHED` still keys off the keyring, and the missing
+record is now reported rather than assumed. `observatory.subject.UNRECORDED_DETAIL`
+covers it, symmetric with `RECORDED_DETAIL` for the opposite mismatch. `detail`
+is `null` only when a subject is both recorded and attached.
+
+Two tests had encoded the wrong behaviour rather than the right one.
+`test_dict_omits_detail_when_attached` asserted that a key-attached subject
+reports no detail, which is precisely the overclaim; and
+`test_a_key_without_a_record_is_still_attached_not_recorded` passed a *populated*
+birth payload, so it never tested the case in its own name. The first was the
+same failure mode as the `READY` bug: a green test asserting something that
+should not have been true. Both are now fixed, and the second has two
+companions covering the recorded, unrecorded, and fully-attached cases.
+
+The lesson generalises past this milestone. A test suite verifies that the code
+does what the code does. It cannot verify that the code is claiming the right
+thing, and a test written to match observed behaviour will happily lock in an
+overclaim. The only reliable check found so far is to read the output and ask
+what a human would conclude, and to compare the documentation against the
+implementation rather than assuming the two were written from the same
+understanding.
+
+Applying that check to the fix found a fourth defect, immediately. The new
+`UNRECORDED_DETAIL` existed in the data model and was asserted by unit tests, and
+never reached the screen. `ObservatoryRenderer.header` printed `subject_detail`
+only inside its `no_subject` branch; every other state got the banner alone. So
+`RECORDED_DETAIL` had been silently dropped from the display since the day it
+was written, and the whole point of the `RECORDED` state — that a human reading
+the terminal learns the subject cannot sign — was being lost at the last metre.
+
+Nothing caught it because every test that mattered checked the model rather than
+the rendered text, and the one test that checked rendering
+(`test_telemetry_unavailability_is_stated`) was in the `no_subject` branch, the
+single place the code worked. The new test asserts the detail reaches the
+rendered output, and was confirmed to fail when the fix is reverted.
+
+All four defects share a shape: an honest value that existed, was correct, and was
+never actually seen by a reader. The model was right and the screen was wrong;
+the test was green and the prose was wrong. Recording them here because the
+pattern is more likely to recur than any individual bug, and the only thing that
+has caught them so far is deliberately reading the output rather than the code.
+
 ### Verified
 
-- 697 tests pass; 397 pre-existing, 300 new.
+- 703 tests pass; 397 pre-existing, 306 new. The 397 baseline was re-measured
+  against commit `2d5ea3d` in a detached worktree rather than assumed.
 - `python -m birth.cli status` exits `0` and reports `NOT_CONFIGURED` against the
   live laboratory, creating nothing.
 - `python -m birth.cli ceremony` exits `1`, reports `NOT_CONFIGURED`, and creates

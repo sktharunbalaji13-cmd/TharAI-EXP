@@ -97,6 +97,14 @@ class SubjectRenderingTests(LabTestCase):
         self.assertIn("SUBJECT: baby-ai:subject", text)
         self.assertNotIn("NO EXPERIMENTAL SUBJECT", text)
 
+    def test_subject_detail_is_rendered_not_just_the_banner(self) -> None:
+        # The banner alone reads "SUBJECT: <id>", which implies a ceremony ran.
+        # This session has a key and no birth record, so the correction has to
+        # reach the screen. It did not: the renderer printed the detail only in
+        # the no-subject branch, and the same omission hid RECORDED_DETAIL.
+        text = render(self.session)
+        self.assertIn("No birth record exists", text)
+
     def test_reported_domain_is_shown_as_observed(self) -> None:
         text = render(self.session)
         self.assertIn("memory", text)

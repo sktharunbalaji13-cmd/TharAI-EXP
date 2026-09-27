@@ -16,6 +16,11 @@ independent sources, and the distinction between them is the whole point:
     (:meth:`provenance.keyring.Keyring.role_of`). The subject can now sign, and
     anything it writes is attributable to it rather than merely labelled as its.
 
+The two sources are independent, and both mismatches are reportable. A key
+without a record is a real subject that can sign but was never born in a
+ceremony, and is reported with :data:`UNRECORDED_DETAIL`. A record without a key
+is a created subject that cannot yet sign, and is reported as ``RECORDED``.
+
 Why the distinction exists
 --------------------------
 A birth record and a signing key are different grants. The record says a subject
@@ -62,7 +67,9 @@ class SubjectStatus(str, enum.Enum):
     NO_SUBJECT = "NO_SUBJECT"
     #: A sealed birth record exists. No signing key is provisioned.
     RECORDED = "RECORDED"
-    #: A birth record exists *and* a human-registered ``BABY_AI`` key is active.
+    #: A human-registered ``BABY_AI`` key is active, so the subject can sign.
+    #: The birth record is independent; see :meth:`SubjectRegistry.detail`, which
+    #: reports whether one exists alongside the key.
     ATTACHED = "ATTACHED"
 
     def __str__(self) -> str:  # pragma: no cover - cosmetic
@@ -85,6 +92,17 @@ RECORDED_BANNER = "SUBJECT RECORDED, NOT KEY-ATTACHED"
 RECORDED_DETAIL = (
     "A birth record exists, so a subject was created. No BABY_AI signing key is "
     "provisioned, so the subject cannot yet author anything attributable."
+)
+
+#: Shown when a signing key is active but no birth record was ever written. The
+#: key is real and the subject can sign, so the banner must not hide it; but the
+#: laboratory performed no ceremony, and a reader who saw only ``SUBJECT: <id>``
+#: would reasonably assume a recorded birth. Silence here would overclaim in the
+#: opposite direction from :data:`RECORDED_DETAIL`.
+UNRECORDED_DETAIL = (
+    "A BABY_AI signing key is active, so this subject can author attributable "
+    "events. No birth record exists, so the laboratory performed no ceremony for "
+    "it. The key is the only evidence of the subject's existence."
 )
 
 
@@ -193,6 +211,10 @@ class SubjectRegistry:
             return NO_SUBJECT_DETAIL
         if status is SubjectStatus.RECORDED:
             return RECORDED_DETAIL
+        if not self._birth.get("subject_exists"):
+            # Key-attached, but no ceremony was ever recorded. Reported rather
+            # than left as None, because None means "nothing more to say".
+            return UNRECORDED_DETAIL
         return None
 
     def to_dict(self) -> dict[str, Any]:

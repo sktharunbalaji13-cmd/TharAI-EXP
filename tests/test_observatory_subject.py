@@ -24,6 +24,7 @@ from observatory.subject import (
     RECORDED_DETAIL,
     SubjectRegistry,
     SubjectStatus,
+    UNRECORDED_DETAIL,
 )
 from tests.support import LabTestCase
 
@@ -102,11 +103,14 @@ class SubjectRegistryTests(LabTestCase):
         self.assertIsNone(data["subject"])
         self.assertEqual(data["detail"], NO_SUBJECT_DETAIL)
 
-    def test_dict_omits_detail_when_attached(self) -> None:
+    def test_dict_reports_unrecorded_detail_for_a_bare_key(self) -> None:
+        # A key with no birth record is attached but unrecorded, so the detail is
+        # not omitted: the display has to say the ceremony never happened. See
+        # RecordedButNotAttachedTests for the recorded-and-attached case.
         self.provision_baby_ai("baby-ai:subject")
         data = SubjectRegistry(self.keyring).to_dict()
         self.assertIsNotNone(data["subject"])
-        self.assertIsNone(data["detail"])
+        self.assertEqual(data["detail"], UNRECORDED_DETAIL)
 
 
 class RecordedButNotAttachedTests(LabTestCase):
@@ -153,8 +157,24 @@ class RecordedButNotAttachedTests(LabTestCase):
         # The two sources are independent. A key alone means something can sign
         # but no ceremony was ever performed; that is a real and reportable state.
         self.provision_baby_ai("baby-ai:subject-001")
+        registry = SubjectRegistry(self.keyring, {"subject_exists": False})
+        self.assertIs(registry.status, SubjectStatus.ATTACHED)
+        self.assertEqual(registry.recorded_subject_id(), "")
+
+    def test_a_key_without_a_record_says_so_rather_than_claiming_a_birth(self) -> None:
+        # The banner alone reads "SUBJECT: <id>", which a human would reasonably
+        # take to mean a ceremony happened. The detail has to correct that.
+        self.provision_baby_ai("baby-ai:subject-001")
+        registry = SubjectRegistry(self.keyring, {"subject_exists": False})
+        self.assertEqual(registry.detail(), UNRECORDED_DETAIL)
+        self.assertIn("No birth record exists", registry.detail())
+
+    def test_a_key_with_a_record_needs_no_qualifying_detail(self) -> None:
+        # Both halves present: the status is the whole story, so detail is None.
+        self.provision_baby_ai("baby-ai:subject-001")
         registry = SubjectRegistry(self.keyring, birth_payload())
         self.assertIs(registry.status, SubjectStatus.ATTACHED)
+        self.assertIsNone(registry.detail())
 
     def test_dict_reports_recorded_status_and_no_key_backed_subject(self) -> None:
         data = self.registry().to_dict()

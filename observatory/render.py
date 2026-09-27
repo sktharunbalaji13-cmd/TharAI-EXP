@@ -86,6 +86,11 @@ class ObservatoryRenderer:
         else:
             lines.append("")
             lines.append("  " + self._c(snapshot.subject_banner, FG_GREEN, "1"))
+            # Printed here too, not only in the no-subject branch. A subject can
+            # be attached and still need a caveat — a key with no birth record is
+            # attached, and the banner alone would imply a ceremony happened.
+            if snapshot.subject_detail:
+                lines.append("  " + self._c(snapshot.subject_detail, DIM))
         if snapshot.generated_at:
             lines.append(self._kv("observed at", snapshot.generated_at))
         return lines
