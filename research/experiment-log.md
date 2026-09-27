@@ -553,3 +553,95 @@ process-level or OS-level isolation. Any second birth.
    has said nothing. Confirm that is the presentation you want.
 5. **`LICENSE` copyright holder, Ed25519 timing, and Tier 2.** All carried
    forward unchanged.
+
+---
+
+## 2026-09-27 — Milestone 005: ACL boundary audit and a recovery defect
+
+### The reported discrepancy
+
+A cross-process probe run as `BABY_AI_TEST` successfully created
+`provenance/m005_os_denial_probe.txt`, and `icacls` showed no `BABY_AI_TEST`
+deny ACE on `provenance/`. It was reported that this disproves the earlier
+claim that 11/11 protected paths carried effective deny ACEs.
+
+### What direct filesystem evidence actually showed
+
+Auditing all 13 canonical protected paths with `icacls` directly:
+
+- **11/11 existing protected paths DID carry an explicit
+  `THARUNBALAJI-LA\BABY_AI_TEST:(DENY)(W)` ACE.** The boundary was present.
+- 2 paths were absent (`human_control/birth_records`,
+  `human_control/experiment_config/foundation.json`), so no ACE could exist.
+
+**The conclusion drawn from the probe was wrong; the observation about the
+boundary was right.** The probe succeeded because it targeted the wrong path.
+`provenance/` at the repository root is the **Python source package**
+(`keyring.py`, `ledger.py`, `recorder.py`, `cli.py`) that *implements*
+provenance. The canonical protected provenance *evidence* is
+`var/provenance/ledger.jsonl` and `human_control/provenance/`. A successful
+write into a code directory is evidence that the code directory is unprotected,
+not that the evidence boundary is absent. `babylab/paths.py` already documents
+this deliberate split so data and Python packages do not share a namespace.
+
+The earlier 11/11 claim is therefore **upheld**, not disproven. Recorded
+because the intermediate conclusion ("the boundary is gone") was wrong, and
+re-deriving it incorrectly later would be worse.
+
+### A real gap the probe did surface
+
+`provenance/` holds executable code implementing the evidence system, and that
+code is writable by the subject account. That is a genuine policy question —
+the subject could edit the code that judges it. It is NOT part of the canonical
+M005 protected set, and widening the set is a policy decision for the human
+researcher, not something to change silently mid-audit. **Left unchanged and
+raised here.**
+
+### A real defect: recovery silently destroyed the boundary
+
+`scripts/restore_permissions.ps1 -Restore` runs `icacls /reset` on every
+recorded path, stripping explicit deny ACEs, then re-applies only the EXPLICIT
+entries present in the snapshot. The milestone's default snapshot
+(`var/acl-snapshots/protected-paths.json`) was captured **before** the boundary
+was applied and contains **zero** deny entries. Restoring from it therefore
+removed the security boundary while still printing "Restored N path records".
+
+Reproduced in an isolated sandbox (never against the real boundary): the deny
+ACE count went 1 -> 0 on `human_control`, and the script reported success. The
+file `var/provenance/ledger.jsonl` kept its deny only because it is a file
+absent from the snapshot's directory list, so `/reset` never touched it — an
+accident of layout, not a safeguard.
+
+**This is the mechanism by which a recovery operation could have destroyed the
+boundary without anyone noticing.** The earlier "recovery round-trip verified"
+claim used a purpose-built snapshot that already contained the deny ACE, so it
+exercised the happy path and missed this entirely.
+
+### Fixes applied
+
+1. `-Restore` now captures live `BABY_AI_TEST` deny ACEs **before** `/reset`,
+   re-applies them afterwards, and reports
+   `Post-restore check: N path(s) still carry a BABY_AI_TEST deny ACE.` A
+   restored path count is no longer presented as evidence of protection.
+2. `-Restore` now **deduplicates** explicit ACEs. `icacls /deny` appends rather
+   than replaces, so repeated application had left duplicate deny ACEs on 4
+   paths, and every recovery would have compounded them. Collapsed to exactly
+   one deny ACE per protected path.
+3. New regression coverage in `tests/test_m005_acl_recovery.py` (portable, 7
+   tests) pins the defect, the fix, and the result taxonomy, so a future
+   recovery or configuration operation cannot report protection that the
+   filesystem does not have.
+
+### What remains unproven
+
+The recovery round-trip is now verified, and the boundary is confirmed present
+by direct `icacls`. **No cross-process operation was executed by this
+process.** Its token is Medium integrity (S-1-16-8192), elevation type Limited,
+and `SeImpersonatePrivilege` is absent and cannot be enabled
+(`ERROR_NOT_ALL_ASSIGNED`, 1300). It therefore cannot obtain a `BABY_AI_TEST`
+token, and it must never handle that account's password.
+
+`OS_DENIED` and subject workspace `ALLOWED` both remain **NOT_TESTABLE** from
+here. `OS_ISOLATION = NOT_IMPLEMENTED`; `BIRTH SAFETY GATE = BLOCKED`. No
+model, no `BABY_AI` key, no birth, no autonomous process. M006 not started.
+

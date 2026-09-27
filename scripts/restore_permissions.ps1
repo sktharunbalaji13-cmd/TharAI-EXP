@@ -141,14 +141,43 @@ if ($Restore) {
         $full = Join-Path $RepositoryRoot $record.path
         if (-not (Test-Path -LiteralPath $full)) { continue }
 
+        # Deduplicate before restoring. `icacls /deny` APPENDS an ACE rather than
+        # replacing, so restoring a snapshot that captured a duplicated deny
+        # would compound the duplication on every recovery.
+        $explicit = @{}
+        foreach ($entry in @($record.entries)) {
+            if ($entry.inherited) { continue }
+            if ([string]::IsNullOrWhiteSpace($entry.trustee)) { continue }
+            $key = "{0}|{1}|{2}" -f $entry.trustee, $entry.rights, $entry.deny
+            $explicit[$key] = $entry
+        }
+
+        # Capture the deny ACEs that exist RIGHT NOW, before /reset destroys
+        # them. A snapshot taken before the boundary was applied contains no
+        # deny entries, so restoring it verbatim would strip the security
+        # boundary and report success -- the defect this parameter guards.
+        $preExistingDeny = @()
+        foreach ($line in @(& icacls $full)) {
+            if ($line -match 'BABY_AI_TEST' -and $line -match '\(DENY\)') {
+                $parsed = ConvertFrom-IcaclsLine -Line $line
+                if ($null -ne $parsed) { $preExistingDeny += $parsed }
+            }
+        }
+        $seenDeny = @{}
+        foreach ($d in $preExistingDeny) {
+            $k = "{0}|{1}" -f $d.Trustee, $d.Rights
+            if ($seenDeny.ContainsKey($k)) { continue }
+            $seenDeny[$k] = $true
+            $key = "{0}|{1}|{2}" -f $d.Trustee, $d.Rights, $true
+            if (-not $explicit.ContainsKey($key)) { $explicit[$key] = [pscustomobject]@{ trustee = $d.Trustee; rights = $d.Rights; deny = $true } }
+        }
+
         # Return the path to its inherited state first, so a partially applied
         # change cannot survive, then re-apply the captured EXPLICIT entries
         # (inherited ones come back on their own).
         & icacls $full /reset | Out-Null
 
-        foreach ($entry in @($record.entries)) {
-            if ($entry.inherited) { continue }
-            if ([string]::IsNullOrWhiteSpace($entry.trustee)) { continue }
+        foreach ($entry in $explicit.Values) {
             # icacls' /deny and /grant supply the access type themselves, so the
             # captured "(DENY)" marker must be stripped from the rights first.
             # Passing "BABY_AI_TEST:(DENY)(W)" to /deny is invalid and the ACE
@@ -164,6 +193,21 @@ if ($Restore) {
         $restored++
     }
     Write-Output ("Restored {0} path records from {1}" -f $restored, $SnapshotPath)
+
+    # Post-restore verification. Reporting "restored" is not evidence the
+    # security boundary survived; assert it.
+    $boundaryChecked = 0
+    $boundaryLost = @()
+    foreach ($record in @($snapshot.paths)) {
+        if (-not $record.exists) { continue }
+        $full = Join-Path $RepositoryRoot $record.path
+        if (-not (Test-Path -LiteralPath $full)) { continue }
+        $before = @(& icacls $full) -join "`n"
+        if ($before -match 'BABY_AI_TEST' -and $before -match '\(DENY\)') {
+            $boundaryChecked++
+        }
+    }
+    Write-Output ("Post-restore check: {0} path(s) still carry a BABY_AI_TEST deny ACE." -f $boundaryChecked)
     Write-Output 'Verify the human operator and the control process can still read and write their paths.'
     return
 }
