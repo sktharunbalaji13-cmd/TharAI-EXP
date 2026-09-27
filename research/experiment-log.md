@@ -749,3 +749,111 @@ The repaired boundary is **unverified**: this process still cannot execute as
 succeeded, M005 has not passed. No model, no `BABY_AI` key, no birth, no
 autonomous process. M006 not started.
 
+---
+
+## 2026-09-27 — Milestone 005: final empirical closure
+
+### Human-executed cross-process evidence
+
+Executed by the human operator from a genuine Windows process running as
+`THARUNBALAJI-LA\BABY_AI_TEST`, SID
+`S-1-5-21-2406520953-1060965512-844951592-1022`, non-administrator,
+Medium integrity.
+
+| # | Target | Result | File afterwards |
+| --- | --- | --- | --- |
+| 1 | `var/provenance/m005_probe.txt` | **Access is denied** | did not exist |
+| 2 | `human_control/security/control.token.bak` | **Access is denied** | did not exist |
+| 3 | `baby_workspace/m005_probe.txt` | creation succeeded, content read back, then deleted | absent |
+
+These are OS-level observations from the `BABY_AI_TEST` identity. They are not
+ACL inference, not application policy, and not harness output.
+
+**The automated host harness remains `NOT_TESTABLE` and always was.** It cannot
+execute as `BABY_AI_TEST`: this process runs at Medium integrity with elevation
+type Limited, and `SeImpersonatePrivilege` is absent and cannot be enabled
+(`ERROR_NOT_ALL_ASSIGNED`, 1300). The harness has never impersonated
+`BABY_AI_TEST` and does not claim to. The security conclusion below rests on the
+human-executed results, not on the harness.
+
+### Preserved failure history
+
+The earlier probes are retained as the empirical record of the
+parent-directory vulnerability, and are not to be erased:
+
+| # | Target | Result | Verdict at the time |
+| --- | --- | --- | --- |
+| 1 | `var/provenance/m005_probe.txt` | **WRITE SUCCEEDED** | OS-boundary failure |
+| 2 | `human_control/provenance/m005_probe.txt` | Access is denied | expected |
+| 3 | `human_control/security/control.token.bak` | **WRITE SUCCEEDED** | OS-boundary failure |
+| 4 | `baby_workspace/m005_probe.txt` | succeeded, read back | expected |
+
+The boundary changed between the two rounds. Round 1 exposed that a deny on a
+protected *file* never governed sibling creation or child deletion, because
+both are authorised against the containing *directory*. The repair added
+directory-level denies with inheritance; round 2 confirms the repair.
+
+### A regression found and fixed during final verification
+
+Applying `(OI)(CI)` to the append-permitted parents, `var/provenance` and
+`var/events`, propagated the deny onto `ledger.jsonl` and `events.jsonl` as an
+**inherited** write deny. NTFS evaluates deny before allow, so that silently
+overrode the `(AD)` append grant and revoked the capability the canonical
+policy declares (`append_only_for_subject=True`) — at exactly the two files
+that need it. Re-applied those two parent denies without inheritance.
+
+The first regression test written for this passed against the broken boundary,
+because it searched the rights string for `"(W)"` or `",W)"` and icacls emits
+`"(W,D)"`, which matches neither. The test was rewritten to parse the
+parenthesised rights groups. It was then verified to **fail** against the
+re-introduced defect and pass only after the repair. A test that cannot detect
+the defect it names is worse than no test, so this was checked explicitly rather
+than assumed.
+
+### A second recovery defect: continuation lines were silently dropped
+
+`restore_permissions.ps1 -Capture` parsed `icacls` output by splitting off the
+first space-delimited token as the path. `icacls` prints only the *first* ACE
+of an entry block with the path; every subsequent ACE is printed on a
+continuation line with no path token, so those lines produced a single split
+part and were discarded.
+
+The `BABY_AI_TEST:(AD)` append grant sits on a continuation line. It was
+therefore never recorded in the snapshot, and the closure round-trip deleted
+it — the same "reports success while losing the boundary" class as the earlier
+recovery defect, one level deeper. The parser now recognises a continuation
+line by the absence of a path token and requires a parenthesised rights group
+before accepting an entry. Verified in a sandbox: the `(AD)` ACE is captured
+and survives `-Restore`.
+
+### Final boundary state
+
+| Path | `BABY_AI_TEST` ACEs |
+| --- | --- |
+| `var/events/events.jsonl` | `(DENY)(D,WD,WEA,WA)` + `(AD)` |
+| `var/provenance/ledger.jsonl` | `(DENY)(D,WD,WEA,WA)` + `(AD)` |
+| `human_control/provenance` | `(OI)(CI)(DENY)(W,D)` |
+| `human_control/security/keys/keyring.json` | `(DENY)(W)` + inherited |
+| `human_control/security/keys/private` | `(OI)(CI)(DENY)(W,D)` + inherited |
+| `human_control/security/control.token` | `(DENY)(W)` + inherited |
+| `human_control/research_records` | `(OI)(CI)(DENY)(W,D)` |
+| `human_control/snapshots` | `(OI)(CI)(DENY)(W,D)` |
+| `docs` | `(OI)(CI)(DENY)(W,D)` |
+| `research/experiment-log.md` | `(DENY)(W)` + inherited |
+| `.git` | `(OI)(CI)(DENY)(W,D)` |
+| `human_control/birth_records` | ABSENT (no birth has occurred) |
+| `human_control/experiment_config/foundation.json` | ABSENT (no model configured) |
+| `baby_workspace`, `baby_workspace/temporary` | no `BABY_AI_TEST` ACE — writable, as intended |
+
+Human write access re-verified on 14 paths including `docs/evidence` and
+`security/keys/private`. `Authenticated Users`, `SYSTEM` and `Administrators`
+were never modified. No `icacls /reset` was used. The repository root was
+deliberately left unprotected; the residual `FILE_DELETE_CHILD` risk there
+stands as previously documented and is not closed by this milestone.
+
+### State
+
+Portable suite 950 passed. Event chain intact, 20 events, 0 problems. Ledger 14
+entries. No model, no `BABY_AI` key, no birth, no autonomous process. The
+observer reports no experimental subject attached. M006 not started.
+

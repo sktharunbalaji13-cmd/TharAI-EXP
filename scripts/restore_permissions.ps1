@@ -67,17 +67,49 @@ $Protected = @(
 # icacls prints:  <path> <TRUSTEE>:<rights>
 # Milestone 004 shipped a parser that read <path> as the trustee; this one
 # splits off exactly one leading path token and takes the remainder.
+#
+# Every ACE AFTER the first is printed on a CONTINUATION line that carries no
+# path token:
+#
+#     C:\repo\var\provenance THARUNBALAJI-LA\BABY_AI_TEST:(DENY)(D,WD,WEA,WA)
+#                                      BUILTIN\Administrators:(I)(F)
+#                                      TH AUTHORITY\Authenticated Users:(I)(M)
+#
+# A naive `-split ' ', 2` returns a single part for a continuation line, so the
+# entry was dropped. That silently discarded the `BABY_AI_TEST:(AD)` append
+# grant on `var\provenance` and `var\events`, and a later -Restore deleted it --
+# revoking a capability the canonical policy grants. A snapshot that omits an
+# ACE is a recovery record that cannot restore the boundary, so continuation
+# lines are now parsed by detecting the absence of a path token.
 function ConvertFrom-IcaclsLine {
     param([Parameter(Mandatory)][string]$Line)
-    $parts = $Line.Trim() -split ' ', 2
-    if ($parts.Count -ne 2) { return $null }
-    $remainder = $parts[1]
-    $idx = $remainder.LastIndexOf(':')
-    if ($idx -lt 0) { return $null }
-    return [pscustomobject]@{
-        Trustee = $remainder.Substring(0, $idx)
-        Rights  = $remainder.Substring($idx + 1)
+
+    $trimmed = $Line.Trim()
+    if ([string]::IsNullOrWhiteSpace($trimmed)) { return $null }
+
+    # A leading path token exists only on the FIRST line of an entry block.
+    # icacls separates the path from the first ACE with a space, and a Windows
+    # path cannot contain one at that position without being quoted -- icacls
+    # never quotes, so a path containing a space is indistinguishable from a
+    # continuation line. Detect the continuation by the shape of the
+    # remainder instead: every real entry ends in a parenthesised rights group.
+    $parts = $trimmed -split ' ', 2
+    $candidate = if ($parts.Count -eq 2) { $parts[1] } else { $trimmed }
+    if ($candidate -notmatch '\([^)]*\)$') {
+        # Not an ACE: either a continuation line whose remainder was consumed
+        # as a path, or a non-ACE line such as the "Successfully processed"
+        # banner. Fall back to the whole trimmed line and let the shape check
+        # below reject anything that is not trustee:rights.
+        $candidate = $trimmed
     }
+
+    $idx = $candidate.LastIndexOf(':')
+    if ($idx -lt 0) { return $null }
+    $trustee = $candidate.Substring(0, $idx)
+    $rights = $candidate.Substring($idx + 1)
+    if ([string]::IsNullOrWhiteSpace($trustee)) { return $null }
+    if ($rights -notmatch '\([^)]*\)$') { return $null }
+    return [pscustomobject]@{ Trustee = $trustee; Rights = $rights }
 }
 
 if ($Capture) {

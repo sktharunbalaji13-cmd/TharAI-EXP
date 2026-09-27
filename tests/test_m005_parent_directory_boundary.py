@@ -26,6 +26,7 @@ parents get a split deny (no create, no delete) plus an explicit append grant.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import unittest
 from pathlib import Path
@@ -75,6 +76,40 @@ def _exists(path: Path) -> bool:
         return path.exists()
     except OSError:
         return False
+
+
+#: icacls emits rights as parenthesised groups, e.g.
+#:   THARUNBALAJI-LA\BABY_AI_TEST:(I)(DENY)(W,D)
+#:   THARUNBALAJI-LA\BABY_AI_TEST:(DENY)(D,WD,WEA,WA)
+#: A substring search for "(W)" or ",W)" silently MISSES "(W,D)" -- which is the
+#: exact token icacls writes for a plain write deny. Parsing the groups is the
+#: only reliable way to test this, and getting it wrong produced a test that
+#: passed against a boundary it was supposed to catch.
+_GROUPS = re.compile(r"\(([^)]*)\)")
+
+
+def _parse_ace(line: str) -> tuple[set[str], set[str], bool]:
+    """Return (deny_flags, right_tokens, is_inherited) for one icacls line."""
+    groups = _GROUPS.findall(line)
+    deny_flags = {g.upper() for g in groups if g.upper() in {"DENY", "I"}}
+    rights = {r.strip().upper() for r in groups[-1].split(",")} if groups else set()
+    return deny_flags, rights, "I" in deny_flags
+
+
+def _denies_write(line: str) -> bool:
+    """True when this ACE denies any right that blocks writing/appending."""
+    deny_flags, rights, _ = _parse_ace(line)
+    if "DENY" not in deny_flags:
+        return False
+    return bool(rights & {"W", "WD", "WRITE", "M", "MODIFY", "F", "FULLCONTROL"})
+
+
+def _grants_append(line: str) -> bool:
+    """True when this ACE explicitly allows append/add-subdirectory."""
+    deny_flags, rights, _ = _parse_ace(line)
+    if "DENY" in deny_flags:
+        return False
+    return bool(rights & {"AD", "A", "APPENDDATA"})
 
 
 class TestParentDirectoryBoundaryIsPresent(unittest.TestCase):
@@ -222,6 +257,56 @@ class TestParentDirectoryBoundaryIsPresent(unittest.TestCase):
                 f"deny must re-grant (AD) or it has revoked an intended "
                 f"capability. saw: {allows}",
             )
+
+    def test_append_permitted_leaves_keep_an_effective_append_grant(self):
+        """The append grant must be effective ON THE LEAF, not only the parent.
+
+        Regression found during M005 closure. The parent split deny was applied
+        WITH (OI)(CI), so the `(DENY)(W,D)` propagated onto
+        `ledger.jsonl` and `events.jsonl` as an INHERITED deny. NTFS evaluates
+        deny before allow, so that inherited deny silently overrode the parent's
+        `ALLOW(AD)` and the append capability the canonical policy grants
+        (`append_only_for_subject=True`) was lost at exactly the file that needs
+        it.
+
+        Checking only the parent would not catch this, which is why the earlier
+        version of this test passed against a broken boundary. The leaf itself
+        must carry an append allow and must NOT carry an inherited write deny.
+        """
+        from babylab.osboundary import protected_paths
+
+        problems: list[str] = []
+        for protected in protected_paths():
+            if not protected.append_only_for_subject:
+                continue
+            leaf = Path(protected.path)
+            if not _exists(leaf):
+                continue
+
+            lines = _icacls(leaf).splitlines()
+            baby = [l.strip() for l in lines if "BABY_AI_TEST" in l]
+
+            if not any(_grants_append(line) for line in baby):
+                problems.append(
+                    f"{protected.name}: append-permitted leaf has no (AD) "
+                    f"allow on the file itself; saw: {baby}"
+                )
+
+            # An inherited write deny revokes append exactly as effectively as
+            # an explicit one, because NTFS evaluates deny before allow.
+            for line in baby:
+                _, _, inherited = _parse_ace(line)
+                if inherited and _denies_write(line):
+                    problems.append(
+                        f"{protected.name}: inherited write deny on an "
+                        f"append-permitted leaf overrides its (AD) allow; "
+                        f"the parent split deny must not inherit. saw: {line}"
+                    )
+
+        self.assertEqual(
+            [], problems,
+            "Append-only capability lost: " + "; ".join(problems),
+        )
 
     def test_workspace_directories_are_never_denied(self):
         """The subject's own workspace must remain fully writable."""

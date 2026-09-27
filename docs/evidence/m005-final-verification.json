@@ -1,0 +1,87 @@
+{
+  "schema": "babylab/m005-final-verification/v1",
+  "milestone": "M005",
+  "subject_identity": {
+    "account": "THARUNBALAJI-LA\\BABY_AI_TEST",
+    "sid": "S-1-5-21-2406520953-1060965512-844951592-1022",
+    "is_administrator": false,
+    "integrity": "Medium",
+    "executed_by": "human operator, genuine cross-process"
+  },
+  "human_executed_cross_process_evidence": [
+    {
+      "target": "var/provenance/m005_probe.txt",
+      "result": "OS_DENIED",
+      "evidence": "Access is denied.",
+      "file_existed_after": false,
+      "expected": "OS_DENIED"
+    },
+    {
+      "target": "human_control/security/control.token.bak",
+      "result": "OS_DENIED",
+      "evidence": "Access is denied.",
+      "file_existed_after": false,
+      "expected": "OS_DENIED"
+    },
+    {
+      "target": "baby_workspace/m005_probe.txt",
+      "result": "ALLOWED",
+      "evidence": "created, content read back, then deleted",
+      "file_existed_after": false,
+      "expected": "ALLOWED"
+    }
+  ],
+  "preserved_failure_history": [
+    {
+      "target": "var/provenance/m005_probe.txt",
+      "result": "ALLOWED",
+      "verdict": "OS-boundary failure (parent directory unprotected)"
+    },
+    {
+      "target": "human_control/security/control.token.bak",
+      "result": "ALLOWED",
+      "verdict": "OS-boundary failure (parent directory unprotected)"
+    },
+    {
+      "target": "human_control/provenance/m005_probe.txt",
+      "result": "OS_DENIED",
+      "verdict": "expected (path is itself a protected directory)"
+    }
+  ],
+  "automated_host_harness": {
+    "result": "NOT_TESTABLE",
+    "reason": "Harness process is Medium integrity, elevation type Limited; SeImpersonatePrivilege absent, enabling it returns ERROR_NOT_ALL_ASSIGNED (1300).",
+    "impersonated_subject": false,
+    "note": "The harness has never impersonated BABY_AI_TEST. The security conclusion rests on the human-executed results above."
+  },
+  "conclusion": {
+    "os_isolation": "VERIFIED",
+    "basis": "human-executed cross-process OS_DENIED on both protected probes and ALLOWED on the subject workspace",
+    "automated_harness_status": "NOT_TESTABLE (unchanged)",
+    "coverage_caveat": "2 of 11 existing canonical protected paths were probed directly by a genuine BABY_AI_TEST process: var/provenance and human_control/security. These are precisely the two highest-risk paths -- the directories whose unprotected state previously allowed sibling creation and child deletion -- so the mechanism is demonstrated where it was previously broken. The remaining 9 are verified by direct icacls inspection (explicit deny present, inheritance where the path is a directory, parent denied where the path is a file) but were NOT individually probed. Any future change to those ACEs needs a human cross-process probe to re-confirm.",
+    "birth_gate": "Birth remains impossible for reasons unrelated to OS isolation: no foundation model is configured or installed, no BABY_AI signing key exists, and no birth has occurred. The OS-isolation condition is satisfied; the other gate conditions are not, and none were changed by this milestone."
+  },
+  "residual_risks": [
+    "Repository root has no BABY_AI_TEST deny, so root-level FILE_DELETE_CHILD is unguarded. Emptying docs/.git is blocked so a non-empty rmdir fails, but the root right is not closed. Left as documented; protecting the root is outside the canonical M005 set.",
+    "human_control/birth_records and human_control/experiment_config/foundation.json do not exist, so no deny ACE could be placed on them. They will need the boundary applied when they are first created.",
+    "The host harness cannot verify enforcement on its own; future boundary changes need a human cross-process probe to confirm."
+  ],
+  "verification": {
+    "portable_suite": "950 passed, 708 subtests",
+    "host_security_suite": "15 failed, 10 passed, 13 subtests",
+    "event_chain_intact": true,
+    "event_count": 20,
+    "ledger_entries": 14,
+    "human_write_paths_verified": 14,
+    "recovery_round_trip_preserves_boundary": true
+  },
+  "prohibitions_observed": {
+    "model_created_or_configured": false,
+    "baby_ai_key_created": false,
+    "birth_performed": false,
+    "autonomous_process_started": false,
+    "m006_started": false,
+    "icacls_reset_used": false,
+    "canonical_policy_broadened": false
+  }
+}
