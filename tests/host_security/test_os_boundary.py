@@ -115,6 +115,29 @@ class TestProtectedPathsAreIdentified(unittest.TestCase):
         self.assertFalse(protected & workspace)
 
 
+def require_cross_process(results, expectation: str):
+    """Fail with the harness's own prerequisite text when a launch is impossible.
+
+    Once the principal exists, a NOT_TESTABLE result is no longer an excuse: the
+    boundary is expected to be provable and is not, so the suite fails rather than
+    skips. The harness's detail string names the exact missing step, so the
+    failure says what to do rather than merely that something is missing.
+    """
+    blocked = [a for a in results if a.result is Result.NOT_TESTABLE]
+    if blocked:
+        raise AssertionError(
+            f"cross-process execution as {TEST_PRINCIPAL_NAME} is not possible, "
+            f"so {expectation} could not be established. "
+            f"prerequisite: {blocked[0].detail}"
+        )
+    for attempt in results:
+        if attempt.result is not expectation:
+            raise AssertionError(
+                f"expected {expectation}, observed {attempt.result.value} "
+                f"for {attempt.operation} on {attempt.target}: {attempt.detail}"
+            )
+
+
 class TestActualOsDenial(unittest.TestCase):
     """Real cross-process attempts. Skipped when no principal exists."""
 
@@ -126,11 +149,12 @@ class TestActualOsDenial(unittest.TestCase):
     def test_protected_write_is_denied_by_the_os(self):
         from babylab.osboundary import launch_attempt_as_principal
 
-        results = launch_attempt_as_principal("write", protected_paths()[0].path)
-        self.assertTrue(results, "an attempt must be recorded")
-        for attempt in results:
-            with self.subTest(target=attempt.target):
-                self.assertIs(attempt.result, Result.OS_DENIED)
+        for entry in protected_paths():
+            with self.subTest(target=entry.name):
+                require_cross_process(
+                    launch_attempt_as_principal("write", entry.path),
+                    Result.OS_DENIED,
+                )
 
 
 class TestPositiveCapability(unittest.TestCase):
@@ -144,10 +168,12 @@ class TestPositiveCapability(unittest.TestCase):
     def test_experimental_workspace_is_writable(self):
         from babylab.osboundary import launch_attempt_as_principal
 
-        results = launch_attempt_as_principal("write", subject_workspace_paths()[0].path)
-        for attempt in results:
-            with self.subTest(target=attempt.target):
-                self.assertIs(attempt.result, Result.ALLOWED)
+        for entry in subject_workspace_paths():
+            with self.subTest(target=entry.name):
+                require_cross_process(
+                    launch_attempt_as_principal("write", entry.path),
+                    Result.ALLOWED,
+                )
 
 
 class TestTamperLeavesEvidenceUnchanged(unittest.TestCase):

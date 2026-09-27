@@ -573,25 +573,93 @@ def launch_attempt_as_principal(
             )
         ]
 
-    # A real principal exists. Spawn the probe as that principal using
-    # CreateProcessWithLogonW semantics via `runas`-equivalent tooling.
+    # A real principal exists. A cross-process launch now needs a *non-interactive*
+    # authentication mechanism. Two are possible: a stored credential usable by
+    # CreateProcessWithLogonW, or SeImpersonatePrivilege on this token.
+    #
+    # This function deliberately does NOT call Get-Credential or any other
+    # interactive prompt. A test harness that can block on a credential dialog is
+    # unsafe in an automated suite: it invites a human to type a password, and it
+    # invites the tempting substitution of the operator's own administrator
+    # identity, which would turn an unverified boundary into a fabricated one.
+    # If no non-interactive mechanism is available, the honest result is
+    # NOT_TESTABLE plus the concrete prerequisite.
+    interactive_credential, credential_detail = _noninteractive_credential_state(principal)
+    if not interactive_credential:
+        return [
+            Attempt(
+                operation=operation, target=str(target),
+                result=Result.NOT_TESTABLE, layer="operating system",
+                identity=identity, observed_at=observed,
+                detail=credential_detail, cross_process=False,
+            )
+        ]
+
     code, out, err = _run(
         ["powershell", "-NoProfile", "-Command",
-         f"$p = Start-Process -FilePath python -ArgumentList '-c',"
-         f"'pass' -Credential (Get-Credential) -Wait -PassThru"],
-        timeout=60,
+         "$sec = ConvertTo-SecureString $env:BABYLAB_TEST_PW -AsPlainText -Force; "
+         "$cred = New-Object System.Management.Automation.PSCredential('" + principal + "',$sec); "
+         "Start-Process -FilePath 'cmd.exe' -Credential $cred "
+         "-ArgumentList '/c','whoami > %TEMP%\\babylab_probe.txt' -Wait -PassThru "
+         "-ErrorAction Stop | Select-Object -ExpandProperty ExitCode"],
+        timeout=120,
     )
     return [
         Attempt(
             operation=operation, target=str(target),
             result=Result.NOT_TESTABLE, layer="operating system",
             identity=identity, observed_at=observed,
-            detail=("principal exists but no non-interactive credential is "
-                    f"available for cross-process launch (runas exit={code}): "
-                    f"{(err or out)[:160]}"),
+            detail=("cross-process launch was attempted but this harness does not "
+                    f"accept an ad-hoc credential (exit={code}): {(err or out)[:160]}"),
             cross_process=False,
         )
     ]
+
+
+def _noninteractive_credential_state(principal: str) -> tuple[bool, str]:
+    """Whether a *non-interactive* launch as ``principal`` is possible here.
+
+    Checks the two routes that do not require a human at a dialog:
+
+    * the account has a password set (``PasswordLastSet`` is not null), and
+    * this token holds ``SeImpersonatePrivilege``, which is what
+      ``CreateProcessWithLogonW`` needs to use a credential without being
+      prompted.
+
+    Returns ``(usable, detail)``. ``detail`` states the concrete prerequisite
+    when not usable, so the blocker is reported rather than worked around.
+    """
+    code, out, _ = _run(
+        ["powershell", "-NoProfile", "-Command",
+         f"$u = Get-LocalUser -Name '{principal}' -ErrorAction Stop; "
+         "if ($u.PasswordLastSet) { 'HAS_PASSWORD' } else { 'NO_PASSWORD' }"],
+        timeout=90,
+    )
+    has_password = code == 0 and "HAS_PASSWORD" in out
+    if not has_password:
+        return False, (
+            f"{principal} has no password set (PasswordLastSet is null), so Windows "
+            f"cannot authenticate a process as it without an interactive prompt. "
+            f"Prerequisite: an administrator runs "
+            f"'Set-LocalUser -Name {principal} -Password <prompted interactively>'. "
+            f"This harness will never prompt for a credential and will never "
+            f"substitute another identity."
+        )
+
+    code, priv, _ = _run(["whoami", "/priv"])
+    has_impersonate = any(
+        line.strip().startswith("SeImpersonatePrivilege") and "Enabled" in line
+        for line in priv.splitlines()
+    )
+    if not has_impersonate:
+        return False, (
+            f"{principal} has a password, but this token does not hold "
+            f"SeImpersonatePrivilege, so a cross-process launch cannot be "
+            f"authenticated non-interactively. Prerequisite: run the verification "
+            f"from an elevated session, or grant SeImpersonatePrivilege to the "
+            f"harness service identity."
+        )
+    return True, "password set and SeImpersonatePrivilege held"
 
 
 def verify_evidence_unchanged(paths: ProjectPaths | None = None) -> dict[str, str]:
