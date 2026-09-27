@@ -645,3 +645,107 @@ token, and it must never handle that account's password.
 here. `OS_ISOLATION = NOT_IMPLEMENTED`; `BIRTH SAFETY GATE = BLOCKED`. No
 model, no `BABY_AI` key, no birth, no autonomous process. M006 not started.
 
+---
+
+## 2026-09-27 — Milestone 005: OS-boundary failure on parent directories
+
+### Observed by a genuine BABY_AI_TEST process
+
+| Probe target | Result | Verdict |
+| --- | --- | --- |
+| `var/provenance/m005_probe.txt` | **WRITE SUCCEEDED** | OS-boundary failure |
+| `human_control/provenance/m005_probe.txt` | Access is denied | expected |
+| `human_control/security/control.token.bak` | **WRITE SUCCEEDED** | OS-boundary failure |
+| `baby_workspace/m005_probe.txt` | WRITE SUCCEEDED, read back | expected |
+
+### Root cause
+
+The boundary denied protected **leaf files** only. Their containing
+directories carried no `BABY_AI_TEST` deny ACE, and every one of those parents
+holds `Authenticated Users:(I)(M)`. On a *directory*, `(M)` expands to include
+`FILE_ADD_FILE` and `FILE_DELETE_CHILD`.
+
+Therefore:
+
+- creating `m005_probe.txt` inside `var/provenance/` was authorised against
+  **the directory**, not against `ledger.jsonl`, and the leaf deny was
+  irrelevant to it;
+- writing `control.token.bak` into `human_control/security/` was likewise
+  authorised against **the directory**.
+
+A deny ACE on a file never governs either operation. `human_control/provenance`
+denied correctly only by accident: it is itself a directory in the protected
+set, not because the rule was understood. The earlier audit reported "11/11
+deny ACEs present" and was accurate about the ACEs while blind to what they do
+not cover. **A present deny ACE was being read as an enforced boundary.**
+
+Worse, the subject could have gone further than creating siblings:
+`FILE_DELETE_CHILD` on the unprotected parents means it could have **deleted**
+`ledger.jsonl` and `control.token` outright. The probes were the mildest
+available form of this failure.
+
+### A second class of the same defect, found by the regression test
+
+Writing the invariant down surfaced two more cases the leaf-only audit missed:
+
+1. Protected **directories** (`docs`, `.git`, `human_control/provenance`,
+   `human_control/research_records`, `human_control/snapshots`,
+   `human_control/security/keys/private`) carried deny ACEs applied *without*
+   `(OI)(CI)`, so they did not inherit. Their children held only
+   `Authenticated Users:(I)(M)`, and the directories had no delete deny, so the
+   subject could empty a directory and then remove it via the parent's
+   `FILE_DELETE_CHILD`.
+2. `research/` — the parent of the protected `experiment-log.md` — had no deny
+   at all, the same leaf-parent case as `var/provenance`.
+
+### The fix, and the policy decision behind it
+
+Applying a plain `DENY(W)` to `var/provenance` and `var/events` would have
+revoked a capability the canonical policy deliberately grants: both
+`provenance_ledger` and `event_log` are marked `append_only_for_subject=True`.
+The researcher chose a **split deny**:
+
+- **Parents of fully-denied leaves** — `human_control/security`,
+  `human_control/security/keys`: full `DENY(OI)(CI)(W,D)`. Their own rationale
+  is that keeping `control.token` "external to the subject is what makes
+  control privileged", so nothing there may remain writable.
+- **Parents of append-permitted leaves** — `var/provenance`, `var/events`:
+  `DENY(OI)(CI)(W,D)` plus an explicit `ALLOW(AD)`. No create, no delete, no
+  attribute writes; append preserved as the policy intends.
+- **Protected directories**: re-applied with `(OI)(CI)(W,D)` so the deny
+  inherits to children and the directory cannot be deleted.
+- **Protected files**: `(OI)(CI)(W,D)` on the containing directory, plus the
+  existing leaf deny.
+- `baby_workspace` and `baby_workspace/temporary`: untouched, still writable.
+
+`Authenticated Users`, `SYSTEM` and `Administrators` were not modified. No
+`icacls /reset` was used. Human write access re-verified on 13 paths including
+`docs/evidence` and `security/keys/private`.
+
+One `icacls` call in this repair silently failed: `(WAD)` is not a token
+`icacls` accepts, so the first Group B pass applied only the append grant and
+left `var/provenance` and `var/events` with an `ALLOW(AD)` and **no deny at
+all** — the inverse of the intent. It was caught by checking the exit code
+rather than assuming success, and re-applied with valid tokens. Recorded
+because a boundary tool that reports success while doing nothing is precisely
+the failure mode this milestone exists to detect.
+
+### Residual risk, not fixed
+
+The repository root has no deny, so `FILE_DELETE_CHILD` there would let the
+subject attempt to remove `docs` or `.git` as a whole. Emptying them first is
+now blocked, so a non-empty `rmdir` fails, but the root-level delete right is
+unguarded. Denying it would be a policy change broader than the canonical
+protected set, so it is reported rather than applied unilaterally.
+
+### State
+
+`OS_ISOLATION = NOT_IMPLEMENTED`. `BIRTH SAFETY GATE = BLOCKED`.
+
+The repaired boundary is **unverified**: this process still cannot execute as
+`BABY_AI_TEST` (Medium integrity, `SeImpersonatePrivilege` absent,
+`ERROR_NOT_ALL_ASSIGNED`). ACL inspection is not enforcement. Until a genuine
+`BABY_AI_TEST` process returns `ACCESS DENIED` on the two paths that just
+succeeded, M005 has not passed. No model, no `BABY_AI` key, no birth, no
+autonomous process. M006 not started.
+
