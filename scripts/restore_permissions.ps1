@@ -149,8 +149,17 @@ if ($Restore) {
         foreach ($entry in @($record.entries)) {
             if ($entry.inherited) { continue }
             if ([string]::IsNullOrWhiteSpace($entry.trustee)) { continue }
+            # icacls' /deny and /grant supply the access type themselves, so the
+            # captured "(DENY)" marker must be stripped from the rights first.
+            # Passing "BABY_AI_TEST:(DENY)(W)" to /deny is invalid and the ACE
+            # silently fails to be created -- which, after /reset, would leave
+            # the boundary removed rather than restored.
+            $rights = [string]$entry.rights
+            $rights = $rights -replace '\(DENY\)', ''
+            $rights = $rights -replace '\(\)', ''
+            if ([string]::IsNullOrWhiteSpace($rights)) { continue }
             $verb = if ($entry.deny) { '/deny' } else { '/grant' }
-            & icacls $full $verb ("{0}:{1}" -f $entry.trustee, $entry.rights) | Out-Null
+            & icacls $full $verb ("{0}:{1}" -f $entry.trustee, $rights) | Out-Null
         }
         $restored++
     }
