@@ -1,0 +1,45 @@
+﻿{
+    "process_username":  "THARUNBALAJI-LA\\k.tharun balaji",
+    "process_sid":  "S-1-5-21-2406520953-1060965512-844951592-1001",
+    "token_raw":  "TokenElevationType=3;IntegritySID=S-1-16-8192;SeImpersonateEnableWin32Error=1300;SeImpersonateGranted=False;SeImpersonatePrivilegePresentInToken=SEE_PRIV_LIST;",
+    "integrity_level":  "MEDIUM",
+    "integrity_rid_decimal":  8192,
+    "token_elevation_type":  3,
+    "token_is_elevated":  false,
+    "token_elevation_meaning":  "Limited(filtered)",
+    "impersonate_enable_error":  1300,
+    "impersonate_error_meaning":  "ERROR_NOT_ALL_ASSIGNED (privilege not granted to this token)",
+    "has_impersonate":  false,
+    "enabled_privileges":  "SeChangeNotifyPrivilege",
+    "impersonate_in_priv_list":  false,
+    "can_create_users":  false,
+    "principal":  {
+                      "name":  "BABY_AI_TEST",
+                      "enabled":  true,
+                      "sid":  "S-1-5-21-2406520953-1060965512-844951592-1022",
+                      "password_set":  true,
+                      "password_last_set":  "\/Date(1790495843163)\/",
+                      "is_administrator":  false
+                  },
+    "deny_ace_present":  {
+                             "var\\events\\events.jsonl":  true,
+                             "var\\provenance\\ledger.jsonl":  true,
+                             "human_control\\provenance":  true,
+                             "human_control\\security\\keys\\keyring.json":  true,
+                             "human_control\\security\\keys\\private":  true,
+                             "human_control\\security\\control.token":  true,
+                             "human_control\\research_records":  true,
+                             "human_control\\snapshots":  true,
+                             "docs":  true,
+                             "research\\experiment-log.md":  true,
+                             ".git":  true
+                         },
+    "deny_count":  11,
+    "deny_total_existing":  0,
+    "human_write":  {
+                        "human_control":  "ALLOWED",
+                        "docs":  "ALLOWED",
+                        "var\\events":  "ALLOWED",
+                        "baby_workspace":  "ALLOWED"
+                    }
+}
