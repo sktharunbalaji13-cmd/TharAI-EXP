@@ -52,6 +52,13 @@ class ObservatorySnapshot:
     #: even when it says nothing is installed, because "no model, no subject" is
     #: the most important thing this display has to be able to say.
     birth: dict[str, Any] = field(default_factory=dict)
+    #: Milestone 004: the measured trust boundary, supplied by the caller.
+    #: A plain dict on purpose. The Observatory is a *view*; letting it measure
+    #: the boundary itself would create a second source of truth for the single
+    #: most safety-critical claim in the system. An absent key renders as
+    #: UNAVAILABLE in the trust-boundary section rather than as a default that
+    #: could be mistaken for a measurement.
+    trust: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """The serialisable form. This is the API contract."""
@@ -64,6 +71,7 @@ class ObservatorySnapshot:
                 "detail": self.subject_detail,
             },
             "birth": dict(self.birth),
+            "trust": dict(self.trust),
             "state": self.state.to_dict(),
             "graph": self.graph.to_dict(),
             "recent_events": [a.to_dict() for a in self.recent_events],

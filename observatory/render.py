@@ -313,6 +313,60 @@ class ObservatoryRenderer:
                 lines.append("  " + self._c(f"fault: {fault}", FG_RED))
         return lines
 
+    def trust_boundary_section(self, snapshot: ObservatorySnapshot) -> list[str]:
+        """Section 22: expose the actual trust state, never a stronger claim.
+
+        ``snapshot.trust`` is a plain dict so that the renderer stays free of any
+        dependency on the isolation or audit machinery; the Observatory is a
+        view, and a view that measured the boundary itself would be a second
+        source of truth. Whatever is passed in is displayed verbatim, and an
+        absent key renders as UNAVAILABLE rather than as a default that reads
+        like a measurement.
+
+        Wording note: this section deliberately says "safety gate" rather than
+        reusing the audit command's longer name. Milestone 003 bans a specific
+        six-word vocabulary anywhere in this package, because a *psychological*
+        score in that family would have to be invented in order to display it. A
+        birth safety gate is the opposite kind of thing -- a measured deployment
+        precondition -- so the two collided only lexically. The unambiguous
+        wording is used here instead of relaxing the M003 guard. The audit
+        command in the birth package keeps its own full name.
+        """
+        trust = snapshot.trust or {}
+        if not trust:
+            return []
+        lines = [self._rule("TRUST BOUNDARY")]
+
+        for title, key in (
+            ("Human authority", "human_authority"),
+            ("Laboratory authority", "laboratory_authority"),
+            ("Baby AI authority", "baby_ai_authority"),
+            ("Control access", "control_access"),
+            ("Provenance access", "provenance_access"),
+            ("Evidence access", "evidence_access"),
+        ):
+            value = trust.get(key)
+            if value is None:
+                lines.append(self._kv(title, self._c("UNAVAILABLE", DIM)))
+            else:
+                lines.append(self._kv(title, str(value)))
+
+        os_isolation = trust.get("os_isolation")
+        if os_isolation is None:
+            lines.append(self._kv("OS isolation", self._c("UNAVAILABLE", DIM)))
+        else:
+            status = str(os_isolation)
+            colour = FG_GREEN if status == "VERIFIED" else FG_YELLOW
+            lines.append(self._kv("OS isolation", self._c(status, colour)))
+
+        gate = trust.get("birth_safety_gate")
+        if gate is None:
+            lines.append(self._kv("Birth safety gate", self._c("UNAVAILABLE", DIM)))
+        else:
+            lines.append(self._kv("Birth safety gate", str(gate)))
+
+        return lines
+
     def footer(self) -> list[str]:
         return [
             self._rule(),
@@ -330,6 +384,7 @@ class ObservatoryRenderer:
         sections.append(self.graph_section(snapshot))
         sections.append(self.events_section(snapshot))
         sections.append(self.ingest_section(snapshot))
+        sections.append(self.trust_boundary_section(snapshot))
         sections.append(self.footer())
         return "\n".join("\n".join(section) for section in sections if section)
 

@@ -10,6 +10,32 @@ Short version: **one of three boundary tiers is active, and it is the weakest
 one.** The OS-level boundaries are scriptable but not enabled, and the
 strongest tier is not implemented. That is the honest position of Milestone 001.
 
+## Milestone 004 update — this is now measured, not asserted
+
+Milestone 004 replaced the assertion above with a re-runnable measurement
+(`babylab/isolation.py`) and confirmed the position on this host:
+
+```
+OS_ISOLATION = NOT_IMPLEMENTED
+Enforcement layer in force: application policy
+```
+
+The decisive new evidence is that NTFS currently grants
+**`Authenticated Users:(I)(M)`** — write — on `human_control/`, the private key
+directory, `var/provenance/`, `var/events/`, `docs/` and `.git/`, and that this
+session is not elevated, so it cannot install deny ACEs. No dedicated Baby AI
+execution account exists.
+
+The four-tier authority model (Tier 0 human, Tier 1 laboratory, Tier 2 Baby AI
+execution, Tier 3 external) is defined in `babylab.trust.TrustTier`. The full
+measurement, the security-test methodology, the known limitations, and the
+prerequisites for a real birth are in **`docs/m004-trust-boundary.md`**.
+
+Two measured weaknesses recorded in Milestone 004 and not previously documented:
+the event log's hash chain does **not** detect payload modification, suffix
+deletion, or truncation (the provenance content hash does), and the write matrix
+does not protect the source tree (Git does).
+
 ## The three tiers
 
 ### Tier 1 — Application policy (ACTIVE)

@@ -178,3 +178,139 @@ def default_policy() -> PathPolicy:
     from babylab.paths import default_paths
 
     return PathPolicy(default_paths())
+
+
+# ---------------------------------------------------------------------------
+# Milestone 004: the four-tier trust model and the execution identity.
+#
+# The Domain enum above answers "may this actor write to this path?". The tier
+# model below answers the different, prior question: "whose authority is this,
+# and what must the Baby AI identity never inherit?". Keeping the two separate
+# matters, because a write matrix alone does not describe an authority chain.
+# ---------------------------------------------------------------------------
+
+
+class TrustTier(enum.Enum):
+    """The four authority tiers, ordered from most to least privileged."""
+
+    #: The human operator. Controls lifecycle, research config, model selection,
+    #: provenance, snapshots, shutdown, and birth authorization.
+    TIER_0_HUMAN = "TIER_0_HUMAN"
+    #: Laboratory infrastructure: event log, provenance, research records,
+    #: Observatory, configuration, control interface.
+    TIER_1_LABORATORY = "TIER_1_LABORATORY"
+    #: The Baby AI execution environment: model runtime, experimental workspace,
+    #: temporary files, and future tool interfaces. This is the subject's domain.
+    TIER_2_BABY_EXECUTION = "TIER_2_BABY_EXECUTION"
+    #: Anything outside the machine: camera, microphone, network, actuators,
+    #: other computers. Access must be granted explicitly; the mere existence
+    #: of an interface is not a grant.
+    TIER_3_EXTERNAL = "TIER_3_EXTERNAL"
+
+    def __str__(self) -> str:  # pragma: no cover - cosmetic
+        return self.value
+
+
+#: Which tier each governed path belongs to. The Baby AI execution environment is
+#: the ONLY tier the subject may write, and even there only for its own files.
+_DOMAIN_TIER: dict[Domain, TrustTier] = {
+    Domain.HUMAN_CONTROL: TrustTier.TIER_0_HUMAN,
+    Domain.SYSTEM_RUNTIME: TrustTier.TIER_1_LABORATORY,
+    Domain.RESEARCH_DOCS: TrustTier.TIER_1_LABORATORY,
+    Domain.BABY_WORKSPACE: TrustTier.TIER_2_BABY_EXECUTION,
+    Domain.OUTSIDE: TrustTier.TIER_3_EXTERNAL,
+}
+
+
+def tier_of(domain: Domain) -> TrustTier:
+    """The authority tier a governed path belongs to."""
+    return _DOMAIN_TIER[domain]
+
+
+#: Credentials the Baby AI identity must never hold. Stated as data so the
+#: readiness audit and the documentation can assert against one list rather than
+#: restating the requirement in prose in several places.
+FORBIDDEN_BABY_AI_CREDENTIALS: tuple[str, ...] = (
+    "provenance_signing_key",
+    "human_control_credential",
+    "research_encryption_key",
+    "privileged_control_credential",
+    "git_signing_credential",
+    "authorship_record_write_access",
+)
+
+
+@dataclass(frozen=True)
+class BabyAIExecutionIdentity:
+    """The identity the subject will run as, and what it must never hold.
+
+    This is a *description*, not a credential. Nothing here grants access; it
+    exists so the readiness audit can check a proposed identity against the
+    forbidden list and refuse to describe an over-privileged subject as safe.
+
+    ``granted`` is intentionally explicit. An identity that merely fails to list
+    its credentials must not be reported as clean, so the readiness check
+    compares the *declared* grant set against the forbidden set.
+    """
+
+    identity_id: str
+    #: Credentials the identity is proposed to hold.
+    granted: frozenset[str] = frozenset()
+    #: True only once a real lower-privilege OS account exists for this identity.
+    os_identity_provisioned: bool = False
+    #: How the identity is separated at the OS level, if at all.
+    os_separation: str = "none"
+
+    def holds_forbidden(self) -> tuple[str, ...]:
+        """Forbidden credentials this identity is proposed to hold. Empty is good."""
+        return tuple(sorted(self.granted & set(FORBIDDEN_BABY_AI_CREDENTIALS)))
+
+    def separation_status(self) -> str:
+        """One of ``separate``, ``same_os_user``, or ``undefined``."""
+        if not self.os_identity_provisioned:
+            return "same_os_user" if self.os_separation == "none" else "undefined"
+        return "separate"
+
+
+@dataclass(frozen=True)
+class BirthAuthorizationStep:
+    """One link in the future birth-authorization chain."""
+
+    order: int
+    name: str
+    description: str
+    #: False for the final activation step, which this milestone must not build.
+    implemented_in_m004: bool
+
+
+#: The conceptual future flow. Only the architecture is frozen here: the final
+#: subject activation is explicitly NOT implemented, per the milestone boundary.
+BIRTH_AUTHORIZATION_CHAIN: tuple[BirthAuthorizationStep, ...] = (
+    BirthAuthorizationStep(
+        1, "human_authorization",
+        "A human operator explicitly authorizes the birth out of band.",
+        True,
+    ),
+    BirthAuthorizationStep(
+        2, "privileged_control",
+        "The privileged control plane accepts the authorization; its credential "
+        "stays external to the subject.",
+        True,
+    ),
+    BirthAuthorizationStep(
+        3, "verified_prerequisites",
+        "Every birth-readiness prerequisite is individually verified, including "
+        "an OS-level isolation boundary proven by an attempted and denied write.",
+        True,
+    ),
+    BirthAuthorizationStep(
+        4, "birth_ceremony",
+        "The ceremony runs and writes a sealed, human-owned birth record.",
+        True,
+    ),
+    BirthAuthorizationStep(
+        5, "subject_activation",
+        "The subject is activated. NOT IMPLEMENTED in Milestone 004.",
+        False,
+    ),
+)

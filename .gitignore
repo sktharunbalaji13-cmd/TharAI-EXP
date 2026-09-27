@@ -83,6 +83,17 @@ baby_workspace/*/*
 TharAI-EXP.local.json
 local_settings.json
 
+# --- Governed runtime tooling artefacts ------------------------------------
+# Milestone 004. The `vibe` development runtime writes its own governance
+# artefacts (requirement documents, stage lineage, execution receipts) into the
+# workspace it is pointed at. These belong to the development tool, not to the
+# Baby AI research record: they are machine-specific, they are rewritten on every
+# governed run, and committing them would put a moving target in the research
+# history. The research record that matters lives in human_control/ and var/,
+# neither of which is tracked.
+.vibeskills/
+outputs/
+
 # --- Python ----------------------------------------------------------------
 __pycache__/
 *.py[cod]
