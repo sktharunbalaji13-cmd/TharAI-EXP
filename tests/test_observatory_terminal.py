@@ -187,5 +187,131 @@ class SessionUpdateTests(LabTestCase):
         self.assertEqual(code, 130)
 
 
+class BirthFoundationRenderingTests(LabTestCase):
+    """The unconfigured laboratory is the most common case and must read well.
+
+    There is no model and no subject in a fresh installation. That is not a
+    failure to report, it is the state, and the display has to state it without
+    looking broken.
+    """
+
+    def session(self) -> ObservatorySession:
+        session = ObservatorySession(
+            paths=self.paths, clock=self.clock, keyring=self.keyring
+        )
+        session.update()
+        return session
+
+    def test_unconfigured_laboratory_still_has_a_birth_section(self) -> None:
+        text = render(self.session())
+        self.assertIn("BIRTH / FOUNDATION", text)
+
+    def test_not_configured_is_shown_rather_than_guessed(self) -> None:
+        self.assertIn("NOT_CONFIGURED", render(self.session()))
+
+    def test_no_model_is_reported_as_unavailable_not_absent_silently(self) -> None:
+        text = render(self.session())
+        # An empty cell would read as "no model, nothing to see", which is a
+        # different claim from "we could not determine this".
+        self.assertIn("weights           UNAVAILABLE", text)
+        self.assertIn("model usable      no (unproven)", text)
+
+    def test_no_birth_record_is_stated_explicitly(self) -> None:
+        self.assertIn("none: no birth record exists", render(self.session()))
+
+    def test_infrastructure_and_cognition_stay_in_separate_sections(self) -> None:
+        text = render(self.session())
+        # Match the section rules, not the words: the header already contains
+        # "COGNITIVE STATE", which would make a substring search meaningless.
+        self.assertLess(text.index("-- BIRTH / FOUNDATION"), text.index("-- STATE "))
+
+    def test_no_cognitive_state_is_inferred_from_a_configured_model(self) -> None:
+        # The state section must still say no subject, regardless of what the
+        # birth section reports. A model is not a mind.
+        text = render(self.session())
+        state_at = text.index("STATE")
+        self.assertIn("No subject attached", text[state_at:])
+
+    def test_detail_mode_adds_the_capability_registry_digest(self) -> None:
+        session = self.session()
+        plain = render(session)
+        detailed = render(session, detail=True)
+        self.assertLessEqual(len(plain), len(detailed))
+        self.assertIn("registry sha256", detailed)
+
+
+class BornButUnattachedRenderingTests(LabTestCase):
+    """After a ceremony: a subject exists, and it has still said nothing.
+
+    This is the state that would be most tempting to render generously. A birth
+    record is real, and it would be easy to show a state table next to it. The
+    whole point is that there is nothing to show.
+    """
+
+    def born_session(self) -> ObservatorySession:
+        self.born_subject()
+        session = ObservatorySession(
+            paths=self.paths, clock=self.clock, keyring=self.keyring
+        )
+        session.update()
+        return session
+
+    def test_the_banner_reports_recorded_not_attached(self) -> None:
+        self.assertIn("SUBJECT RECORDED, NOT KEY-ATTACHED", render(self.born_session()))
+
+    def test_the_subject_id_is_shown(self) -> None:
+        self.assertIn("baby-ai:subject-001", render(self.born_session()))
+
+    def test_the_birth_event_id_is_shown_and_traceable(self) -> None:
+        session = self.born_session()
+        text = render(session, detail=True)
+        snapshot = session.snapshot()
+        self.assertIn(snapshot.birth["birth_event_id"], text)
+        # A displayed id that is not traceable is a number from nowhere.
+        self.assertIn(snapshot.birth["birth_event_id"], snapshot.traceable_event_ids())
+
+    def test_no_cognitive_state_is_shown_for_an_unattached_subject(self) -> None:
+        text = render(self.born_session())
+        self.assertIn("no signing key", text)
+        self.assertIn("No cognitive state is shown", text)
+
+    def test_no_domain_is_reported_as_observed(self) -> None:
+        # The renderer would only print this if a value had been attributed to a
+        # subject. Nothing has been, so it must not appear.
+        self.assertNotIn("[OBSERVED]", render(self.born_session()))
+
+    def test_attaching_a_key_makes_the_state_section_live(self) -> None:
+        self.provision_baby_ai("baby-ai:subject-001")
+        text = render(self.born_session())
+        self.assertIn("SUBJECT: baby-ai:subject-001", text)
+        self.assertNotIn("no signing key", text)
+        self.assertIn("has not reported any state yet", text)
+
+
+class BirthReadFailureTests(LabTestCase):
+    """A broken birth subsystem must not take the Observatory down with it."""
+
+    def test_a_corrupt_birth_record_is_reported_not_raised(self) -> None:
+        self.paths.birth_record.parent.mkdir(parents=True, exist_ok=True)
+        self.paths.birth_record.write_text("{not json", encoding="utf-8")
+        session = ObservatorySession(
+            paths=self.paths, clock=self.clock, keyring=self.keyring
+        )
+        snapshot = session.update()
+        self.assertEqual(snapshot.birth["model_status"], "UNAVAILABLE")
+        self.assertIn("read_error", snapshot.birth)
+
+    def test_the_display_still_renders(self) -> None:
+        self.paths.birth_record.parent.mkdir(parents=True, exist_ok=True)
+        self.paths.birth_record.write_text("{not json", encoding="utf-8")
+        session = ObservatorySession(
+            paths=self.paths, clock=self.clock, keyring=self.keyring
+        )
+        session.update()
+        text = render(session)
+        self.assertIn("COGNITIVE STATE OBSERVATORY", text)
+        self.assertIn("birth read error", text)
+
+
 if __name__ == "__main__":
     unittest.main()

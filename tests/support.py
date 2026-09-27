@@ -165,5 +165,42 @@ class LabTestCase(unittest.TestCase):
             if line.strip()
         ]
 
+    # -- birth fixtures ---------------------------------------------------
+    def install_weights(self, content: bytes = b"weights", name: str = "test-substrate"):
+        """Configure a model and put a real file with a matching digest on disk.
+
+        Delegates to the shared :func:`weights_config` /
+        :func:`configure_installed_model` pair so there is exactly one honest
+        definition of "a model that is really installed" in the suite.
+        """
+        from tests.birth_fixtures import configure_installed_model
+
+        return configure_installed_model(self, content=content, name=name)
+
+    def born_subject(self, subject_id: str = "baby-ai:subject-001", notes: str = ""):
+        """Run a real ceremony and return its result.
+
+        Convenience for tests in other modules that need a born subject as a
+        precondition. Asserts the ceremony actually succeeded, so a test cannot
+        quietly proceed against a laboratory where the birth was refused.
+        """
+        from tests.birth_fixtures import usable_probe
+        from birth.service import birth_ceremony
+
+        self.install_weights()
+        result = birth_ceremony(
+            subject_id=subject_id,
+            paths=self.paths,
+            runtime_probe=usable_probe,
+            recorder=self.recorder,
+            notes=notes,
+        )
+        self.assertTrue(
+            result.born,
+            f"the birth ceremony did not succeed, so this test has no subject: "
+            f"{result.status.value}: {result.detail}",
+        )
+        return result
+
 
 __all__ = ["LabTestCase", "Actor", "Role", "ROOT"]

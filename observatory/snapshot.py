@@ -27,7 +27,7 @@ from observatory.derive import StateDeriver
 from observatory.graph import StateGraph, build_graph
 from observatory.model import CognitiveState
 from observatory.reader import ObservatoryReader
-from observatory.subject import NO_SUBJECT_DETAIL, SubjectRegistry
+from observatory.subject import SubjectRegistry
 
 #: Version of the snapshot envelope. Clients should check it.
 SNAPSHOT_SCHEMA = "babylab/observatory-snapshot/v1"
@@ -48,6 +48,10 @@ class ObservatorySnapshot:
     deriver_stats: dict[str, int] = field(default_factory=dict)
     faults: list[str] = field(default_factory=list)
     generated_at: str = ""
+    #: Milestone 003: what the birth subsystem reports. Read-only, and present
+    #: even when it says nothing is installed, because "no model, no subject" is
+    #: the most important thing this display has to be able to say.
+    birth: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """The serialisable form. This is the API contract."""
@@ -59,6 +63,7 @@ class ObservatorySnapshot:
                 "banner": self.subject_banner,
                 "detail": self.subject_detail,
             },
+            "birth": dict(self.birth),
             "state": self.state.to_dict(),
             "graph": self.graph.to_dict(),
             "recent_events": [a.to_dict() for a in self.recent_events],
@@ -85,6 +90,11 @@ class ObservatorySnapshot:
         # displayed elements too and must be traceable like anything else.
         for attribution in self.recent_events:
             ids.add(attribution.event_id)
+        # The birth section displays the id of the event that announced the
+        # birth, so that id is displayed and must be traceable too.
+        birth_event_id = self.birth.get("birth_event_id")
+        if birth_event_id:
+            ids.add(str(birth_event_id))
         return sorted(ids)
 
 
@@ -97,18 +107,18 @@ def compose_snapshot(
     timestamp: str = "",
     recent_attributions: list[Attribution] | None = None,
     faults: list[str] | None = None,
+    birth: dict[str, Any] | None = None,
 ) -> ObservatorySnapshot:
     """Build a snapshot from the three collaborating components.
 
     Passed in rather than constructed internally, so tests and the future API
     can compose a snapshot from recorded inputs without a live event store.
     """
-    subject = registry.subject()
     state = deriver.snapshot(now, timestamp=timestamp)
     return ObservatorySnapshot(
         subject_status=registry.status.value,
         subject_banner=registry.describe(),
-        subject_detail=None if subject is not None else NO_SUBJECT_DETAIL,
+        subject_detail=registry.detail(),
         state=state,
         graph=build_graph(state),
         recent_events=list(recent_attributions or []),
@@ -117,4 +127,5 @@ def compose_snapshot(
         deriver_stats=deriver.stats(),
         faults=list(faults or []),
         generated_at=timestamp,
+        birth=dict(birth or {}),
     )

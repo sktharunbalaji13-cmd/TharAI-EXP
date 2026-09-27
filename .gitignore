@@ -37,6 +37,22 @@ var/
 *.bak
 *.orig
 
+# --- Model weights (Milestone 003) -----------------------------------------
+# var/ is already ignored as runtime data, but weights get an explicit rule
+# because the failure mode is severe and specific: a multi-gigabyte binary in
+# Git is permanent in every clone, and a *private* model in Git is a disclosure
+# even when the repository is later made public. Listed separately so that
+# deleting the var/ rule above cannot silently start tracking them.
+*.gguf
+*.ggml
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.onnx
+*.ckpt
+var/models/
+
 # --- Operator area: scaffolding only ---------------------------------------
 # human_control/ holds operator-generated research records, not source. The
 # directory layout is preserved with .gitkeep files so a fresh clone has the

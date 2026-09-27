@@ -90,11 +90,137 @@ class ObservatoryRenderer:
             lines.append(self._kv("observed at", snapshot.generated_at))
         return lines
 
+    def birth_section(self, snapshot: ObservatorySnapshot) -> list[str]:
+        """The laboratory's birth facts, above everything else.
+
+        These are *infrastructure* facts: what was configured, what was
+        installed, what the ceremony concluded. They are deliberately kept
+        visually separate from the cognitive STATE section below, because a
+        subject existing is not the same claim as a subject reporting something.
+        A reader who conflates the two would conclude that having a model means
+        having a mind, which is exactly the confusion this display exists to
+        prevent.
+        """
+        birth = snapshot.birth
+        if not birth:
+            return []
+        lines = [self._rule("BIRTH / FOUNDATION")]
+
+        status = str(birth.get("model_status", "UNAVAILABLE"))
+        colour = FG_GREEN if status == "READY" else FG_YELLOW
+        if status == "READY":
+            lines.append(self._kv("model status", self._c(status, colour)))
+        else:
+            # Spell out the non-ready reasons. A bare status code is easy to skim
+            # past, and the difference between "not installed" and "we did not
+            # check" is the whole point of reporting it at all.
+            lines.append(
+                self._kv("model status", self._c(f"{status}  (not usable)", colour))
+            )
+        if "model_usable" in birth:
+            usable = bool(birth["model_usable"])
+            lines.append(
+                self._kv(
+                    "model usable",
+                    self._c("yes", FG_GREEN) if usable else self._c("no (unproven)", DIM),
+                )
+            )
+
+        model = birth.get("model")
+        if isinstance(model, dict):
+            lines.append(self._kv("model", str(model.get("model_name", ""))))
+            lines.append(self._kv("family", str(model.get("model_family", "") or "UNSPECIFIED")))
+            revision = str(model.get("model_revision", "") or "")
+            quant = str(model.get("quantization", "") or "")
+            if revision or quant:
+                lines.append(
+                    self._kv("revision", " ".join(p for p in (revision, quant) if p))
+                )
+            lines.append(
+                self._kv(
+                    "sha256", self._c(str(model.get("model_sha256", "") or "UNAVAILABLE"), DIM)
+                )
+            )
+            lines.append(
+                self._kv(
+                    "authorship", str(model.get("authorship_classification", "") or "UNSPECIFIED")
+                )
+            )
+        elif birth.get("model_installed"):
+            lines.append(self._kv("weights", self._c("present and matching", DIM)))
+        else:
+            lines.append(self._kv("weights", self._c("UNAVAILABLE", DIM)))
+
+        if birth.get("subject_exists"):
+            lines.append(self._kv("subject", str(birth.get("subject_id", ""))))
+            lines.append(self._kv("born at", str(birth.get("born_at", ""))))
+            lines.append(self._kv("birth id", str(birth.get("birth_id", ""))))
+            if birth.get("birth_event_id"):
+                lines.append(self._kv("birth event", str(birth["birth_event_id"])))
+            if birth.get("birth_record_hash"):
+                lines.append(
+                    self._kv("record sha256", self._c(str(birth["birth_record_hash"]), DIM))
+                )
+        else:
+            lines.append(
+                self._kv("subject", self._c("none: no birth record exists", DIM))
+            )
+
+        lines.append(self._kv("environment", str(birth.get("environment_id", "") or "UNAVAILABLE")))
+        lines.append(
+            self._kv(
+                "env attached",
+                self._c("no", FG_YELLOW) if not birth.get("environment_connected") else "yes",
+            )
+        )
+        workspace = str(birth.get("workspace_state", "") or "UNAVAILABLE")
+        lines.append(self._kv("workspace", workspace))
+
+        capabilities = birth.get("capability_statuses") or {}
+        if capabilities:
+            lines.append(self._kv("capabilities", "none implemented"))
+            # One per line rather than a comma run: the full set is long, and a
+            # wrapped blob of nine statuses invites nobody to read any of them.
+            for name, state in sorted(capabilities.items()):
+                lines.append("  " + " " * 18 + self._c(f"{name} = {state}", DIM))
+        elif birth.get("capability_registry_hash"):
+            lines.append(self._kv("capabilities", self._c("none implemented", DIM)))
+        if self.options.detail and birth.get("capability_registry_hash"):
+            lines.append(
+                self._kv("registry sha256", self._c(str(birth["capability_registry_hash"]), DIM))
+            )
+
+        detail = str(birth.get("model_detail", "")).strip()
+        if detail:
+            lines.append("  " + self._c(f"model: {detail}", DIM))
+        if birth.get("read_error"):
+            lines.append("  " + self._c(f"birth read error: {birth['read_error']}", FG_RED))
+        if self.options.detail and isinstance(model, dict):
+            runtime = str(model.get("runtime", "") or "")
+            runtime_version = str(model.get("runtime_version", "") or "")
+            if runtime or runtime_version:
+                lines.append(
+                    self._kv("runtime", " ".join(p for p in (runtime, runtime_version) if p))
+                )
+        return lines
+
     def state_section(self, snapshot: ObservatorySnapshot) -> list[str]:
         lines = [self._rule("STATE")]
-        if snapshot.subject_banner.startswith("NO EXPERIMENTAL"):
+        if snapshot.subject_status == "NO_SUBJECT":
             lines.append("  " + self._c("No subject attached: no cognitive state to display.", DIM))
             lines.append("  " + self._c("This is the expected result for this milestone.", DIM))
+            return lines
+        if snapshot.subject_status == "RECORDED":
+            lines.append(
+                "  "
+                + self._c(
+                    "A subject exists but has no signing key, so it cannot be",
+                    DIM,
+                )
+            )
+            lines.append(
+                "  " + self._c("the author of anything. No cognitive state is shown.", DIM)
+            )
             return lines
 
         state = snapshot.state
@@ -194,6 +320,7 @@ class ObservatoryRenderer:
     # -- composition ------------------------------------------------------
     def render(self, snapshot: ObservatorySnapshot) -> str:
         sections: list[list[str]] = [self.header(snapshot)]
+        sections.append(self.birth_section(snapshot))
         sections.append(self.state_section(snapshot))
         sections.append(self.graph_section(snapshot))
         sections.append(self.events_section(snapshot))

@@ -2,12 +2,24 @@
 
 Research instrumentation for observing a self-hosted AI system.
 
-**Milestones 001 and 002 deliver the laboratory and its instruments only -
-there is no AI here.** No model, no agent, no memory, no goals, no
-self-modification, and no subject. That absence is deliberate: an instrument
-that contains the thing it measures cannot be trusted to report on it. See
-[docs/architecture.md](docs/architecture.md) and
+**Milestones 001 and 002 delivered the laboratory and its instruments only.**
+**Milestone 003 adds the birth ceremony and the subject it can create.**
+
+There is still no AI here. Milestone 003 does not create a mind, and says so in
+the code, the schema, and the display. What it adds is the ability for a
+*human-configured* model to be born as a single, immutable, signed subject, and
+for that fact to be reported truthfully. No model, agent, memory, goals, or
+self-modification exists; no stage, curriculum, or emotional state is claimed;
+and no capability is implemented. The absence is deliberate: an instrument that
+contains the thing it measures cannot be trusted to report on it. See
+[docs/architecture.md](docs/architecture.md),
+[docs/birth-architecture.md](docs/birth-architecture.md), and
 [docs/decisions/ADR-004-no-event-taxonomy.md](docs/decisions/ADR-004-no-event-taxonomy.md).
+
+**No model has been installed and no ceremony has been run against a real
+model.** `python -m birth.real_model_test` reports `NOT_CONFIGURED` and exits
+non-zero, which is the correct result on a fresh installation. The laboratory
+never chooses a foundation model for you.
 
 ## Requirements
 
@@ -21,6 +33,7 @@ powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
 python -m unittest discover -s tests -t .
 python -m observer.cli
 python -m observatory.cli status
+python -m birth.cli status
 ```
 
 ## What is here
@@ -34,10 +47,11 @@ python -m observatory.cli status
 | `observatory/` | Read-only view of what a subject has reported about itself |
 | `control/` | Separate privileged process: lifecycle, snapshots, HMAC-authenticated loopback control |
 | `human_control/` | Operator area: config, baseline, records, snapshots, seals, keys |
-| `baby_workspace/` | Reserved for the future subject |
-| `var/` | Runtime data: `var/events/`, `var/provenance/` |
+| `birth/` | The birth ceremony, model identity verification, and read-only birth status |
+| `baby_workspace/` | Reserved for the subject |
+| `var/` | Runtime data: `var/events/`, `var/provenance/`, `var/models/` |
 
-Data and secrets are not in Git; code and documentation are. See
+Data, secrets, and model weights are not in Git; code and documentation are. See
 [docs/git-integration.md](docs/git-integration.md).
 
 ## Common commands
@@ -47,6 +61,14 @@ Data and secrets are not in Git; code and documentation are. See
 python -m observer.cli
 python -m observer.cli --summary
 python -m observer.cli --namespace security --detail
+
+# Birth: inspect first, act second
+python -m birth.cli status           # what the ceremony would find; writes nothing
+python -m birth.cli model            # configured model and its verified digest
+python -m birth.cli capabilities      # the capability contracts
+python -m birth.cli ceremony          # the one command that creates a subject
+python -m birth.cli verify            # re-verify the sealed birth record
+python -m birth.real_model_test       # explicit real-model check; nonzero if unconfigured
 
 # Cognitive State Observatory (read-only)
 python -m observatory.cli status          # summary; with no subject: NO SUBJECT
@@ -110,6 +132,39 @@ wearing a UI.
 See [docs/observatory.md](docs/observatory.md) and
 [docs/decisions/ADR-007-cognitive-observatory.md](docs/decisions/ADR-007-cognitive-observatory.md).
 
+## Birth
+
+`python -m birth.cli ceremony` is the only command in this project that creates
+a subject. It verifies the configured weights by SHA-256, probes the configured
+runtime, appends one `system.baby_ai.born` event, writes one sealed birth
+record, and records one signed provenance entry. It refuses to run twice, and it
+refuses a fake runtime even when a test asks it to.
+
+**The model is never chosen by the laboratory.** It reads exactly one file,
+`human_control/experiment_config/foundation.json`, and if that file is absent the
+answer is `NOT_CONFIGURED`. There is no search, no fallback, and no download,
+because a system that picks its own substrate makes its own experiments
+irreproducible.
+
+The Observatory displays birth state in a `BIRTH / FOUNDATION` section kept
+separate from cognitive state, and distinguishes three subject states:
+
+| Status | Means |
+| --- | --- |
+| `NO_SUBJECT` | No record, no key. |
+| `RECORDED` | A birth record exists, but no `BABY_AI` signing key. |
+| `ATTACHED` | A record exists and a human-registered key is active. |
+
+`RECORDED` is the honest outcome of running a ceremony, and the display does not
+round it up to `ATTACHED`: a birth record says a subject was created, a signing
+key says it can prove things, and only a human can grant the second. The
+observatory reads this through `birth.status`, which is structurally incapable of
+reaching the ceremony's event-append path — a test walks the import graph to
+confirm it.
+
+See [docs/birth-architecture.md](docs/birth-architecture.md) and
+[docs/decisions/ADR-008-inherited-substrate.md](docs/decisions/ADR-008-inherited-substrate.md).
+
 ## Security posture
 
 Read this before trusting any data this repository produces.
@@ -142,6 +197,7 @@ Details and the full threat table: [docs/security-model.md](docs/security-model.
 | [security-model.md](docs/security-model.md) | The three tiers, control-plane auth, key custody, residual risks |
 | [observer-interface.md](docs/observer-interface.md) | CLI reference, line format, following, performance |
 | [observatory.md](docs/observatory.md) | The Cognitive State Observatory: architecture, commands, guarantees |
+| [birth-architecture.md](docs/birth-architecture.md) | The birth ceremony, what a record asserts, and what it refuses to claim |
 | [observability-principles.md](docs/observability-principles.md) | The normative rules, each with the test that enforces it |
 | [cognitive-state-model.md](docs/cognitive-state-model.md) | State schema, epistemic status, how a subject reports |
 | [observatory-api.md](docs/observatory-api.md) | The versioned snapshot contract for a future web client |
@@ -163,7 +219,9 @@ Details and the full threat table: [docs/security-model.md](docs/security-model.
    authorship.
 3. **The observer and the observatory cannot write.** The human's view cannot
    influence the experiment, and the Observatory writes nothing at all - not
-   even a derived-state cache.
+   even a derived-state cache. This is structural, not disciplinary: a test walks
+   the Observatory's import graph and fails if the ceremony or the provenance
+   recorder is reachable from it.
 4. **Absence is not a value.** A domain the subject did not report is
    `UNAVAILABLE`, never `[]` or `0`. The type system refuses to construct the
    alternative.
@@ -174,6 +232,12 @@ Details and the full threat table: [docs/security-model.md](docs/security-model.
    vocabulary. A test fails the build if one appears.
 7. **Limitations are written down.** Where a guarantee is not verified, the
    documentation says `NOT VERIFIED` rather than implying otherwise.
+8. **The laboratory never chooses the substrate.** No model search, no fallback,
+   no download, and no test double in a permanent record. A fake may exist in a
+   test; it may never end up in a sealed artefact that outlives it.
+9. **Installed is not usable, and existence is not authority.** Verified weights
+   do not imply a working runtime, and a birth record does not imply a signing
+   key. The status payload and the display keep those apart.
 
 ## License
 

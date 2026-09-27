@@ -357,9 +357,28 @@ class AuthorisationTests(LabTestCase):
         self.assertTrue(response.ok)
 
     def test_an_oversized_frame_is_refused(self):
-        response = self._raw_send("{" + "x" * 200000)
-        self.assertFalse(response.ok)
-        self.assertEqual(response.error_code, "FRAME_TOO_LARGE")
+        # A 200 KB frame exceeds the read limit, so the server refuses it while
+        # reading, before any request is parsed. Two outcomes are both correct
+        # refusals and which one happens is a timing race we do not control: the
+        # server may send its error frame and close, or it may close while we are
+        # still writing and the stack report a reset. Asserting on the response
+        # alone therefore fails intermittently on a test that is otherwise sound.
+        #
+        # The invariant that actually matters is that the oversized frame was
+        # never executed. No counter for rejected *requests* moves, because no
+        # request was ever parsed - the refusal happens upstream of that. So the
+        # assertion is that nothing was authorised and no operation ran.
+        try:
+            response = self._raw_send("{" + "x" * 200000)
+        except (ConnectionResetError, BrokenPipeError, socket.timeout):
+            response = None
+        if response is not None:
+            self.assertFalse(response.ok)
+            self.assertEqual(response.error_code, "FRAME_TOO_LARGE")
+        stats = self.server.stats.to_dict()
+        self.assertEqual(stats["requests_authorized"], 0)
+        self.assertEqual(stats["by_operation"], {})
+        self.assertIs(self.server.state, State.RUNNING)
 
     def test_counters_separate_authorised_from_rejected(self):
         self._raw_send('{"op":"ping","nonce":"a","args":{},"auth":""}')

@@ -1,15 +1,16 @@
 # Cognitive State Observatory
 
-**Status:** implemented, Milestone 002
-**Last updated:** 2026-09-26
+**Status:** implemented, Milestone 002; birth-state display added in Milestone 003
+**Last updated:** 2026-09-27
 
 The Observatory is a read-only consumer of the canonical event log. It answers
 one question — *what has the subject said about itself?* — and it is built so
 that the honest answer is also the easy one.
 
-Milestone 002 ships with **no subject**. `observatory.cli status` says
+In a laboratory that has not run a ceremony, `observatory.cli status` says
 `NO EXPERIMENTAL SUBJECT ATTACHED` and that is the correct output, not a failure
-state.
+state. Milestone 003 adds the case where a ceremony *has* run, which produces a
+third subject state described in §3.0.
 
 ---
 
@@ -58,7 +59,40 @@ Global flags: `--no-color`, `--detail`, `--json`, `--subject-namespace NS`
 The subject flags declare which event namespaces a real subject may write under.
 They are configuration supplied by the human and are never inferred from events.
 
-## 3. The four guarantees
+## 3. The guarantees
+
+### 3.0 A subject that exists is not a subject that has spoken
+
+Milestone 003 makes this a first-class distinction, because a birth ceremony
+creates the first situation where "a subject exists" and "a subject has reported
+something" come apart.
+
+`observatory.subject.SubjectStatus` has three states:
+
+| Status | Means | Banner |
+|---|---|---|
+| `NO_SUBJECT` | No birth record, no `BABY_AI` key. | `NO EXPERIMENTAL SUBJECT ATTACHED` |
+| `RECORDED` | A sealed birth record exists; no signing key is provisioned. | `SUBJECT RECORDED, NOT KEY-ATTACHED: <id>` |
+| `ATTACHED` | A record exists **and** a human-registered `BABY_AI` key is active. | `SUBJECT: <id>` |
+
+`RECORDED` is the honest description of this milestone's actual outcome, and it
+is not rounded up to `ATTACHED`. A birth record is a statement by the laboratory
+that a subject was created; a signing key is a statement that the subject can
+prove things. Displaying the first as the second would tell a reader the subject
+can author events. It cannot — the ceremony deliberately does not provision a
+key, because attributing a subject's existence and granting it authority to
+author are separate decisions and the second belongs to a human.
+
+The consequence for the display: in the `RECORDED` case the STATE section shows
+no domains at all. Having a subject and having a subject that has reported
+something are different facts, and only the second one has state to show.
+
+The birth facts themselves appear in a separate **BIRTH / FOUNDATION** section
+above STATE, reporting the model status, weights, authorship classification,
+subject and birth ids, environment, workspace, and per-capability status. That
+section is kept visually and structurally separate from STATE because a model
+existing is not a mind existing, and a reader who let the two blur together would
+draw a conclusion neither one supports.
 
 ### 3.1 An absence is never drawn as a value
 
@@ -103,7 +137,7 @@ Subject identity comes from the human-owned keyring, or it does not exist. The
 
 ### 3.4 It cannot change anything
 
-`tests/test_observatory_security.py` asserts this two ways:
+`tests/test_observatory_security.py` asserts this three ways:
 
 - **Behaviourally** — a full ingest leaves the event log and the provenance
   ledger byte-identical, adds no ledger entries, and creates no files.
@@ -111,6 +145,20 @@ Subject identity comes from the human-owned keyring, or it does not exist. The
   method on `store`, `ledger`, `recorder`, `keyring`, or `registry`, no
   filesystem mutation on any receiver, no `open()` for writing, no network
   import, and no synthetic-cognition vocabulary.
+- **By import closure** — `ObservatoryImportClosureTests` walks the import graph
+  from each entry point and fails if any write-only module
+  (`birth.service`, `provenance.recorder`, `provenance.seal`, `control.server`)
+  is reachable, directly or transitively. It also confirms that
+  `birth.status` alone cannot reach `events.store` or `provenance.recorder`, and
+  that `birth.service` genuinely *does* reach the event store — so the first
+  check cannot pass vacuously.
+
+The import-closure check is what makes Milestone 003's birth display safe. The
+Observatory must display whether a subject exists, and the function that knows
+is `birth.service.birth_ceremony`, which holds the event-append path. Importing
+the ceremony for a read would hand a read-only component the ability to write.
+`birth/status.py` is the read half, split out for exactly this reason, and the
+closure test is what keeps the split from quietly eroding.
 
 The structural half matters because behavioural tests only prove the paths they
 happen to run.

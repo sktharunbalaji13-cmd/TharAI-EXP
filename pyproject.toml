@@ -5,18 +5,18 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "babylab"
 version = "0.1.0"
-description = "Baby AI Research Project - experimental laboratory instrumentation and observation (Milestones 001-002)"
+description = "Baby AI Research Project - experimental laboratory instrumentation and observation (Milestones 001-003)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Baby AI Research Project" }]
-keywords = ["research", "provenance", "observability", "event-sourcing"]
+keywords = ["research", "provenance", "observability", "event-sourcing", "birth"]
 
 # ---------------------------------------------------------------------------
 # RUNTIME DEPENDENCIES: NONE.
 #
-# Milestones 001 and 002 are implemented entirely against the Python standard
-# library. The Cognitive State Observatory adds no web framework and no
+# Milestones 001 through 003 are implemented entirely against the Python
+# standard library. The Cognitive State Observatory adds no web framework and no
 # visualisation library: the snapshot contract is defined so a future client can
 # be built, but no client is built here. See docs/development-log.md
 # ("Dependency Policy"), ADR-002, and ADR-007.
@@ -24,7 +24,7 @@ keywords = ["research", "provenance", "observability", "event-sourcing"]
 # Standard-library modules relied upon:
 #   hashlib, hmac, secrets, json, socket, threading, subprocess, unittest,
 #   argparse, ast, dataclasses, datetime, pathlib, os, sys, re, io, contextlib,
-#   tempfile, shutil, time
+#   tempfile, shutil, time, platform, uuid, enum, typing
 # ---------------------------------------------------------------------------
 dependencies = []
 
@@ -39,6 +39,7 @@ babylab-observer = "observer.cli:main"
 babylab-observatory = "observatory.cli:main"
 babylab-control = "control.cli:main"
 babylab-integrity = "provenance.cli:main"
+babylab-birth = "birth.cli:main"
 
 [tool.setuptools]
 packages = [
@@ -48,6 +49,7 @@ packages = [
     "observatory",
     "control",
     "provenance",
+    "birth",
 ]
 
 [tool.pytest.ini_options]

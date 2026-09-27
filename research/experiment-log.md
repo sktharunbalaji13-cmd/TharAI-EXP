@@ -323,9 +323,181 @@ untrustworthy.
 1. **Subject registration.** When a real subject exists, how is it registered,
    and which namespaces may it write under? `SubjectRegistry` is read-only and
    `--subject-namespace` is configuration, so nothing is decided yet. See
-   `ADR-007`.
+   `ADR-007`. **Partly answered in Milestone 003:** a `BABY_AI` signing key is a
+   separate, deliberate act and the ceremony does not create one, so the registry
+   reports `RECORDED` rather than `ATTACHED`. Which namespaces such a key may
+   write under is still undecided.
 2. **`LICENSE` copyright holder.** Still a placeholder. Blocks publication.
 3. **Ed25519 timing.** Deferred per the decision above; the reopen condition is
    recorded, so this only needs revisiting when an independent party is involved.
 4. **Tier 2 and the subject account.** Both need an elevated environment, and
    the subject account is not needed until there is a subject.
+
+---
+
+## 2026-09-27 - Milestone 003: birth, model identity, and a truthful display
+
+### Scope
+
+Allow a subject to be born, exactly once, from a model the human explicitly
+configured and whose bytes were verified. Report that birth honestly in the
+Observatory. Nothing else.
+
+### What was built
+
+- `birth/` package: configuration, model identity resolution, the runtime
+  protocol, the llama.cpp subprocess adapter, the capability registry, the
+  environment and workspace descriptions, the action boundary, the sealed birth
+  record, the ceremony, and a read-only status module.
+- `python -m birth.cli` with `status`, `model`, `capabilities`, `ceremony`, and
+  `verify`, plus `python -m birth.real_model_test` for an explicit real-model
+  check.
+- 300 new tests, 697 in total, all passing.
+- Two documents and one ADR: `docs/birth-architecture.md`,
+  `docs/decisions/ADR-008-inherited-substrate.md`, and updates to
+  `docs/architecture.md`, `docs/observatory.md`, `docs/observatory-api.md`, and
+  this file.
+
+### The decisions that mattered
+
+**The laboratory never chooses a model.** `load_config` reads exactly one file.
+No search, no fallback, no download. This was the milestone's most important
+refusal and the one most likely to be quietly abandoned later, because a
+self-selecting substrate is very convenient and the failure is invisible: two
+runs of "the same" experiment quietly get different weights.
+
+**The event is appended before the record is written.** The intuitive order —
+write the record, then announce it by hash — fails under interruption in a way
+that is hard to recover from. Writing the event first means a crash leaves an
+event with no record: an announcement of a birth that did not happen. That is
+detectable. The cost is that the event cannot carry the record's hash, so the two
+artefacts reference each other by id instead, in the one direction that is
+checkable.
+
+**The record is written exactly once.** There is no `update_record`. The
+provenance entry is a `CREATE` over the final bytes. Both were chosen so that no
+code path exists which could rewrite a sealed birth.
+
+**`birth.status` was split out of `birth.service`.** The Observatory has to
+display whether a subject exists, and the function that knows is the ceremony,
+which holds the event-append path. Importing it for a read would have handed a
+read-only component the ability to write. The split makes the guarantee
+structural, and `ObservatoryImportClosureTests` walks the import graph to keep it
+that way — including a check that `birth.service` genuinely *does* reach the
+event store, so the test cannot pass vacuously.
+
+**A recorded subject is not an attached subject.** A ceremony writes a record and
+does not provision a signing key. Those are different grants: a record says a
+subject was created, a key says it can prove things. Rounding the first up to the
+second would tell a reader the subject can author events. It cannot. The display
+says `SUBJECT RECORDED, NOT KEY-ATTACHED` in those words.
+
+**`RUNTIME_UNVERIFIED` was added because the read-only path found a real
+overclaim.** `resolve_model_identity` returned `READY` when no runtime probe was
+supplied — which is exactly the case the Observatory always hits, since running a
+binary is not a read-only act. A display showing `READY` would be telling a
+reader the model is usable when no process had run it. There is now a status for
+"weights verified, runtime unchecked", and `birth_status` reports
+`model_installed` and `model_usable` separately. A related incoherence was fixed
+at the same time: with a record present, the detail line was still quoting the
+unprobed inspection, so the display could print `READY` and "the runtime was NOT
+checked" in adjacent lines.
+
+### A note on testing without lying
+
+The suite must be able to produce a successful birth, and must not be able to
+produce a fake one that looks real. Weights are real bytes with their real
+SHA-256, so every digest and integrity check runs for real. The runtime is
+**injected as a call argument**, never configured.
+
+That distinction is the whole point. Pointing a configuration at a fake runtime
+would write a lie into an immutable artefact — a permanent record describing a
+test double as a real substrate. Injecting availability instead leaves the sealed
+record describing a real runtime and puts the falsification in the test's own
+call site. The ceremony's refusal of `RuntimeKind.FAKE` is unconditional and does
+not consult the probe, so no fixture can route around it. This lives in
+`tests/birth_fixtures.py` so there is one definition of it.
+
+### A bug found by looking at the output
+
+The `RUNTIME_UNVERIFIED` problem was not found by a test. A passing test asserted
+`inspect()` returned `READY`, and that assertion was itself the bug: it encoded
+the overclaim as expected behaviour. It was found by printing the display and
+reading it. Tests confirm that a value is what the code produces; only reading
+the output reveals whether that value is the right claim to be making.
+
+A second, smaller one came from the same exercise: the label `environment
+attached` overran the renderer's 18-character column and printed as
+`environment attachedno`.
+
+### Verified
+
+- 697 tests pass; 397 pre-existing, 300 new.
+- `python -m birth.cli status` exits `0` and reports `NOT_CONFIGURED` against the
+  live laboratory, creating nothing.
+- `python -m birth.cli ceremony` exits `1`, reports `NOT_CONFIGURED`, and creates
+  no event, no birth record, and no provenance entry. The live log still holds
+  its 18 events.
+- `python -m birth.real_model_test` exits `1` and reports `NOT_CONFIGURED`, with
+  `UNAVAILABLE` for the model, digest, configuration hash, runtime, backend,
+  token counts, and timings. No number is zero and none is estimated.
+- The ceremony's negative cases are covered end to end: no configuration, no
+  weights, wrong digest, missing runtime, and a fake runtime. Each produces no
+  record, no event, and no ledger entry.
+- A full ceremony produces exactly one event, one record write, and one signed
+  `CREATE` provenance entry, and the record's own hash verifies afterwards.
+- The Observatory cannot reach a write path, checked by import closure from
+  three entry points, with a non-vacuity check.
+- `python -m provenance.cli verify` exits `0`: chain and MACs intact, seal valid,
+  keyring valid, protected files matching. This entry was recorded as a `MODIFY`
+  under the human key, not as a fresh `CREATE`.
+
+### Not verified
+
+- **The ceremony against a real model.** No llama.cpp binary and no GGUF weights
+  are installed. Every successful birth in this milestone was produced by a test
+  with an injected runtime probe. The adapter, the parser, and the ceremony are
+  tested; the combination has never run against real weights on this machine.
+  This is the largest gap in the milestone and it is a hardware-and-weights gap,
+  not a code gap.
+- **Any generation metric.** Prompt tokens, output tokens, backend, and timings
+  are `UNAVAILABLE`, and the report says so rather than reporting zero.
+- **GPU execution.** The GPU is present and is reported by name and VRAM. No
+  model has been loaded onto it.
+- **OS-level denial of writes to `human_control/`.** Still Tier 1 only,
+  unchanged. Now more consequential: a ceremony writes to a protected area, so
+  the gap between "the code enforces this" and "the operating system enforces
+  this" is wider than it was.
+- **Subject authorisation of its own writes.** No `BABY_AI` key exists, so the
+  path from "subject exists" to "subject authors an event" is untested in the
+  running system.
+- **A recorded subject's own event attribution.** `RECORDED` is exercised only
+  by tests. No real laboratory is in that state.
+
+### Deliberately not built
+
+A model choice of any kind. A model download, search, or fallback. A baby AI
+key — the ceremony does not provision one. Any capability implementation: all
+are `UNAVAILABLE` or `NOT_YET_IMPLEMENTED`. Any stage, curriculum, or
+developmental sequence. Any claim of consciousness, sentience, emotion,
+motivation, curiosity, preference, personality, or memory. Any intelligence or
+readiness score. Any claim of `BABY_AI_AUTHORED` — the only classification is
+`INHERITED_PRETRAINED`. An update or rewrite path for the birth record. Any
+process-level or OS-level isolation. Any second birth.
+
+### Open questions for the human researcher
+
+1. **Which model, and is it a decision you want to make now?** The ceremony
+   cannot run until a llama.cpp binary and a specific GGUF file with a recorded
+   digest are chosen and placed. Nothing will choose them.
+2. **Digest provenance.** `model_sha256` must be a value you obtained, not one
+   this machine produced. Where do the real digests come from — the publisher, a
+   known-good manifest, or your own download-time measurement?
+3. **Namespace policy for a `BABY_AI` key.** Carried over from Milestone 002 and
+   now slightly more urgent: a subject will exist before it can write, and the
+   namespaces it may write under are still undecided.
+4. **Whether `RECORDED` is the right state to ship in.** It is the honest
+   description, but it does mean the default display says a subject exists and
+   has said nothing. Confirm that is the presentation you want.
+5. **`LICENSE` copyright holder, Ed25519 timing, and Tier 2.** All carried
+   forward unchanged.

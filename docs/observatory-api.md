@@ -1,8 +1,8 @@
 # Observatory API
 
-**Status:** implemented, Milestone 002
+**Status:** implemented, Milestone 002; `birth` section added in Milestone 003
 **Snapshot version:** `babylab/observatory-snapshot/v1`
-**Last updated:** 2026-09-26
+**Last updated:** 2026-09-27
 
 `ObservatorySnapshot.to_dict()` is the contract. The terminal renderer and the
 test suite are both consumers of it, and a future browser view would be a third.
@@ -24,6 +24,7 @@ built against a defined contract before any transport exists.
     "banner": "NO EXPERIMENTAL SUBJECT ATTACHED",
     "detail": "Cognitive telemetry unavailable"
   },
+  "birth": { "...": "see below" },
   "state": { "...": "see cognitive-state-model.md" },
   "graph": { "...": "see below" },
   "recent_events": [ ],
@@ -34,22 +35,85 @@ built against a defined contract before any transport exists.
 }
 ```
 
-`subject.detail` is `null` when a subject is attached, and a string explaining
-the gap when one is not. A client should surface it: an empty dashboard and a
-dashboard reporting a missing subject are different situations, and only one of
-them means the instrument is working.
+`subject.detail` is `null` when a subject is key-attached, and a string
+explaining the gap when one is not. A client should surface it: an empty
+dashboard and a dashboard reporting a missing subject are different situations,
+and only one of them means the instrument is working.
 
 ## subject
 
 | Field | Type | Meaning |
 |---|---|---|
-| `status` | string | `NO_SUBJECT` for this milestone. |
+| `status` | string | `NO_SUBJECT`, `RECORDED`, or `ATTACHED`. |
 | `banner` | string | Human-readable subject line. |
 | `detail` | string or null | Why there is no telemetry. |
 
-The subject is established from the human-owned keyring. A client must not
-derive subject identity from anything in this payload; it is reported, not
+`ATTACHED` means a human-registered `BABY_AI` key is active. `RECORDED` means a
+sealed birth record exists but no such key does. The two must not be collapsed:
+the first says the subject can sign things, the second does not. See
+[observatory.md](observatory.md) §3.0.
+
+Subject attachment is established from the human-owned keyring. A client must
+not derive subject identity from anything in this payload; it is reported, not
 inferred, for the same reason the terminal does not.
+
+## birth
+
+Added in Milestone 003. This is a verbatim pass-through of
+`birth.status.birth_status`, the birth subsystem's read-only report. It is
+present in every snapshot, including in a laboratory with nothing configured,
+because "no model and no subject" is the state most installations are actually
+in and the display has to be able to say so.
+
+```json
+{
+  "subject_exists": true,
+  "subject_id": "baby-ai:subject-001",
+  "born_at": "2026-09-27T04:31:52.197Z",
+  "birth_id": "BIRTH-b078793f6610",
+  "birth_event_id": "EVENT-000001",
+  "model_status": "READY",
+  "model_detail": "birth record BIRTH-... was written on ... by a ceremony that verified the weights and the runtime",
+  "model_installed": true,
+  "model_usable": true,
+  "capability_registry_hash": "…",
+  "capability_statuses": { "PERCEPTION": "UNAVAILABLE" },
+  "environment_id": "env.unattached",
+  "environment_connected": false,
+  "workspace_state": "EMPTY",
+  "model": { "model_name": "…", "model_sha256": "…", "authorship_classification": "INHERITED_PRETRAINED" },
+  "birth_record_hash": "…"
+}
+```
+
+Four of these fields are independent facts, and any two can be true while the
+others are false:
+
+| Field | Means |
+|---|---|
+| `subject_exists` | A sealed birth record is on disk. |
+| `model_installed` | The weights are on disk and their digest matches. |
+| `model_usable` | The weights are installed *and* a runtime was found and healthy. |
+| `model_status` | The fine-grained reason. |
+
+`model_status` is one of `NOT_CONFIGURED`, `MODEL_NOT_INSTALLED`,
+`MODEL_INTEGRITY_MISMATCH`, `RUNTIME_UNAVAILABLE`, `RUNTIME_UNVERIFIED`,
+`READY`, or `ERROR`.
+
+`RUNTIME_UNVERIFIED` deserves attention, because it is the status the
+Observatory reports most often in a configured laboratory. The read-only status
+path never executes the runtime binary, so it can establish that the weights are
+correct but not that they can be loaded. Reporting `READY` there would tell a
+client the model is usable when no process has run it, so it does not. A client
+must treat `model_usable: false` as a real answer, not as missing data.
+
+If the birth subsystem cannot be read at all — a corrupt record, a permission
+problem — the payload reports `model_status: "UNAVAILABLE"` and a `read_error`
+string rather than failing the snapshot. A read-only observer that crashes
+because an unrelated subsystem is unhappy is not read-only, it is useless.
+
+None of this is cognitive state. `birth` describes the laboratory's substrate; a
+model existing is not a mind existing. Clients must not merge it into `state`.
 
 ## state
 

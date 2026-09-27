@@ -5,13 +5,24 @@
 A research laboratory for observing a self-hosted AI system. Milestone 001
 delivers the **instrumentation only**: the event log, the provenance ledger, the
 read-only observer, the separated control process, and the tests that prove they
-work.
+work. Milestone 002 adds the read-only Cognitive State Observatory. Milestone 003
+adds the birth ceremony that creates a subject, and the model identity
+verification that ceremony depends on.
 
 ## What this repository is not
 
 It is not an AI. There is no model, no agent loop, no planner, no memory
-retrieval, no goal generation, and no self-modification. None of those belong to
-Milestone 001, and the absence is deliberate rather than incidental.
+retrieval, no goal generation, and no self-modification.
+
+Milestone 003 is worth reading carefully here, because it is the milestone where
+that sentence could most easily stop being true. It adds the *ability* to create
+a subject, and the code that can load a real model — but no model is installed,
+no ceremony has been run against real weights, no agent loop exists, and every
+capability in the registry is `UNAVAILABLE` or `NOT_YET_IMPLEMENTED`. What
+exists is a well-instrumented, heavily falsified procedure for creating one, and
+an honest display that reports its absence.
+
+The absence is deliberate rather than incidental.
 
 The reason is methodological. Everything in this project is an *observation
 instrument*. An instrument that also contains the thing it measures cannot be
@@ -25,6 +36,12 @@ plane is asked to `PAUSE`, it reports honestly that nothing is attached:
 
 Fabricating a subject later would contaminate the first observations of the real
 experiment, which is the one thing this project exists to avoid.
+
+The same reasoning governs tests. The suite can produce a successful birth, but
+it may not produce a *fake* one that looks real: test weights are real bytes
+with their real digest, and the runtime is injected as a call argument rather
+than configured, so no sealed artefact ever describes a test double as a real
+substrate. See [birth-architecture.md](birth-architecture.md).
 
 ## Component map
 
@@ -47,9 +64,29 @@ experiment, which is the one thing this project exists to avoid.
                                   │  babylab/      │◄─────────────┘
                                   │  storage/hash  │
                                   │  trust/paths   │
-                                  │  identity/keys │
-                                  └────────────────┘
+                                   │ identity/keys │
+                                   └────────┬──────┘
+                                            │
+        ┌────────────────┐          ┌──────┴───────┐          ┌──────────────┐
+        │  observatory   │──────────│    birth/    │──────────│  birth       │
+        │  read-only     │ reads    │              │  runs    │  ceremony    │
+        │  cognitive     │ status   │  status.py   │          │  service.py  │
+        │  state + birth │          │  (no writes) │          │  (the only   │
+        └────────────────┘          └──────────────┘          │   writer)    │
+                                                               └──────┬───────┘
+                                                                      │ appends
+                                                                      ▼
+                                                          var/events/events.jsonl
 ```
+
+The `birth/` split is load-bearing, not cosmetic. The Observatory must display
+whether a subject exists, and the function that knows is the ceremony — which
+holds the event store's append path. Importing the ceremony for a read would
+hand a read-only component the ability to write. So `birth/status.py` holds
+every read, `birth/service.py` holds every write, and
+`tests/test_observatory_security.py::ObservatoryImportClosureTests` walks the
+import graph to confirm no write-capable module is reachable from the
+Observatory.
 
 ### `babylab/` — shared foundations
 
@@ -81,6 +118,15 @@ from the caller. Key possession is the claim; the ledger is the evidence.
 
 A read-only terminal renderer. It cannot append to the log, holds no signing
 key, and is the only component whose output a researcher is expected to read.
+
+### `birth/` — the only thing that creates a subject
+
+Two halves with an enforced direction of dependency. `birth/status.py` is
+read-only and reaches no write path; `birth/service.py` holds the ceremony, the
+event append, the single record write, and the signed `CREATE` provenance entry.
+The model is identified by SHA-256 against an explicitly written configuration,
+and the laboratory never chooses one. See
+[birth-architecture.md](birth-architecture.md).
 
 ### `control/` — the privileged process
 

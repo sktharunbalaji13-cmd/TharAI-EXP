@@ -33,6 +33,7 @@ DIRECTORIES = (
     "human_control/security/keys",
     "human_control/security/keys/private",
     "human_control/snapshots",
+    "human_control/birth_records",
     "baby_workspace",
     "baby_workspace/code",
     "baby_workspace/experiments",
@@ -41,6 +42,7 @@ DIRECTORIES = (
     "baby_workspace/temporary",
     "observer",
     "observatory",
+    "birth",
     "control",
     "events",
     "provenance",
@@ -51,6 +53,7 @@ DIRECTORIES = (
     "var/events",
     "var/provenance",
     "var/logs",
+    "var/models",
 )
 
 #: Directories that hold Python packages. They must never contain runtime
@@ -61,6 +64,7 @@ CODE_DIRECTORIES = (
     "provenance",
     "observer",
     "observatory",
+    "birth",
     "control",
     "tests",
 )
@@ -135,6 +139,30 @@ class ProjectPaths:
     def snapshots(self) -> Path:
         return self.human_control / "snapshots"
 
+    @property
+    def birth_records(self) -> Path:
+        """Immutable birth records. Written once, at the birth ceremony.
+
+        Inside ``human_control/`` and therefore outside the subject's write
+        authority, which is the point: the record of what a subject was born as
+        must not be writable by the subject.
+        """
+        return self.human_control / "birth_records"
+
+    @property
+    def birth_record(self) -> Path:
+        """The single birth record. Milestone 003 permits at most one."""
+        return self.birth_records / "BIRTH.json"
+
+    @property
+    def foundation_config(self) -> Path:
+        """The explicit foundation-model configuration.
+
+        Configuration is human-owned and protected; model *weights* are not.
+        See ``var/models`` below and docs/birth-architecture.md.
+        """
+        return self.experiment_config / "foundation.json"
+
     # -- baby workspace ---------------------------------------------------
     @property
     def baby_code(self) -> Path:
@@ -178,6 +206,19 @@ class ProjectPaths:
     @property
     def log_dir(self) -> Path:
         return self.var / "logs"
+
+    @property
+    def model_dir(self) -> Path:
+        """Where model weight files live.
+
+        Under ``var/`` and therefore excluded from version control, because
+        model weights are large binary artefacts and a weight file in Git is a
+        weight file in every clone forever. The *hash* of the weights is recorded
+        in the protected configuration and in the birth record, which is what
+        makes the installation reproducible without checking the bytes into
+        source control.
+        """
+        return self.var / "models"
 
     @property
     def control_config(self) -> Path:

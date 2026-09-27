@@ -11,9 +11,16 @@ event displayed is labelled with how its origin was established, and a renderer
 so that a view can be produced from any snapshot.
 
 Read-only by construction: the session is handed an
-:class:`~events.store.EventStore` and calls only reading methods on it. It has
+:class:`events.store.EventStore` and calls only reading methods on it. It has
 no reference to any writer, no append path, and no provenance mutation. That is
 asserted in ``tests/test_observatory_security.py``.
+
+The birth state is read through :mod:`birth.status` rather than
+:mod:`birth.service`, and that is not a stylistic choice. ``birth.service`` holds
+the ceremony and therefore imports the event store's append path; importing it
+here would put a writer into a read-only component's dependency graph and make
+the security assertion above true only by convention. :mod:`birth.status` is the
+half of the birth subsystem that cannot write anything.
 """
 
 from __future__ import annotations
@@ -24,6 +31,7 @@ from typing import Any
 
 from babylab.clock import Clock
 from babylab.paths import ProjectPaths, default_paths
+from birth.status import birth_status
 from events.store import EventStore
 from observatory.attribution import Attributor
 from observatory.derive import StateDeriver
@@ -51,7 +59,8 @@ class ObservatorySession:
 
     def __post_init__(self) -> None:
         self.store = EventStore(self.paths.event_store, clock=self.clock)
-        self.registry = SubjectRegistry(self.keyring)
+        self._birth = self._read_birth()
+        self.registry = SubjectRegistry(self.keyring, self._birth)
         self.reader = ObservatoryReader(store=self.store, clock=self.clock)
         self.attributor = Attributor(
             subject_namespace=self.subject_namespace, subject_label=self.subject_label
@@ -63,6 +72,28 @@ class ObservatorySession:
         )
         self._recent: list = []
         self._started = False
+
+    def _read_birth(self) -> dict[str, Any]:
+        """Ask the birth subsystem what it reports, tolerating any failure.
+
+        The Observatory must keep working in a laboratory where the birth
+        subsystem cannot answer — a corrupt record, a half-written config, a
+        permissions problem. A read-only observer that crashes because an
+        unrelated subsystem is unhappy is not read-only, it is useless, so the
+        failure is reported as a fact in the payload rather than raised.
+        """
+        from babylab.errors import BabyLabError
+
+        try:
+            return birth_status(self.paths)
+        except (BabyLabError, OSError, ValueError) as exc:
+            return {
+                "subject_exists": False,
+                "subject_id": "",
+                "model_status": "UNAVAILABLE",
+                "model_detail": f"the birth subsystem could not be read: {exc}",
+                "read_error": str(exc),
+            }
 
     # -- updating ---------------------------------------------------------
     def update(self) -> ObservatorySnapshot:
@@ -93,6 +124,7 @@ class ObservatorySession:
             now=self.clock.now(),
             timestamp=self.clock.timestamp(),
             recent_attributions=self._recent[-10:],
+            birth=self._birth,
         )
 
     def render(self, options: RenderOptions | None = None) -> str:
