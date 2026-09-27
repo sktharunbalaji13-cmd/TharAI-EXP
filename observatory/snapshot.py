@@ -59,6 +59,10 @@ class ObservatorySnapshot:
     #: UNAVAILABLE in the trust-boundary section rather than as a default that
     #: could be mistaken for a measurement.
     trust: dict[str, Any] = field(default_factory=dict)
+    #: Milestone 005: the measured OS boundary. Same discipline as ``trust`` --
+    #: a plain dict supplied by the caller, never computed by the view, and an
+    #: absent key renders as UNAVAILABLE rather than as an inferred value.
+    os_boundary: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """The serialisable form. This is the API contract."""
@@ -72,6 +76,7 @@ class ObservatorySnapshot:
             },
             "birth": dict(self.birth),
             "trust": dict(self.trust),
+            "os_boundary": dict(self.os_boundary),
             "state": self.state.to_dict(),
             "graph": self.graph.to_dict(),
             "recent_events": [a.to_dict() for a in self.recent_events],

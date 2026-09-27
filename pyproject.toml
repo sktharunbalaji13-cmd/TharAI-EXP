@@ -55,3 +55,13 @@ packages = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+# Milestone 005. The host-security suite depends on Windows, a dedicated
+# low-privilege account, real NTFS and a real cross-process launch, so it is
+# excluded from the default run to keep the ordinary suite portable and
+# deterministic. Run it explicitly with:
+#     py -3 -m pytest tests/host_security -q
+# See docs/m005-os-isolation.md, "Host-security test methodology".
+norecursedirs = ["tests/host_security", ".*", "build", "dist", "__pycache__"]
+markers = [
+    "host_security: requires a real Windows host with a dedicated low-privilege principal",
+]

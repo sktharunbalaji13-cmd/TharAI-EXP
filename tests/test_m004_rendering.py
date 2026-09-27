@@ -47,6 +47,7 @@ def make_snapshot(
     state: CognitiveState | None = None,
     faults: list[str] | None = None,
     trust: dict | None = None,
+    os_boundary: dict | None = None,
 ) -> ObservatorySnapshot:
     return ObservatorySnapshot(
         subject_status=subject_status,
@@ -59,6 +60,7 @@ def make_snapshot(
         generated_at="2026-01-01T00:00:00Z",
         birth=dict(birth or {}),
         trust=dict(trust or {}),
+        os_boundary=dict(os_boundary or {}),
     )
 
 

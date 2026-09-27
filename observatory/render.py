@@ -367,6 +367,59 @@ class ObservatoryRenderer:
 
         return lines
 
+    def os_boundary_section(self, snapshot: ObservatorySnapshot) -> list[str]:
+        """Milestone 005: the measured OS boundary, from observations only.
+
+        Every value here must come from a real attempt. A missing key renders
+        ``UNAVAILABLE`` -- never ``VERIFIED``, and never a value inferred from
+        the existence of ACL code. Section 23 is explicit that the Observatory
+        must never claim stronger isolation than the underlying tests establish.
+        """
+        boundary = snapshot.os_boundary or {}
+        if not boundary:
+            return []
+        lines = [self._rule("OS BOUNDARY")]
+
+        principal = boundary.get("execution_identity")
+        lines.append(
+            self._kv("execution identity", str(principal) if principal
+                     else self._c("UNAVAILABLE", DIM))
+        )
+        integrity = boundary.get("integrity")
+        lines.append(
+            self._kv("integrity", str(integrity) if integrity
+                     else self._c("UNAVAILABLE", DIM))
+        )
+        admin = boundary.get("administrator")
+        if admin is None:
+            lines.append(self._kv("administrator", self._c("UNAVAILABLE", DIM)))
+        else:
+            lines.append(self._kv("administrator", "NO" if admin is False else "YES"))
+
+        state = boundary.get("os_isolation")
+        if state is None:
+            lines.append(self._kv("os isolation", self._c("UNAVAILABLE", DIM)))
+        else:
+            status = str(state)
+            colour = FG_GREEN if status == "VERIFIED" else FG_YELLOW
+            if status == "FAILED":
+                colour = FG_RED
+            lines.append(self._kv("os isolation", self._c(status, colour)))
+
+        for title, key in (
+            ("protected evidence", "protected_evidence"),
+            ("control credentials", "control_credentials"),
+            ("provenance keys", "provenance_keys"),
+            ("experimental workspace", "experimental_workspace"),
+        ):
+            value = boundary.get(key)
+            if value is None:
+                lines.append(self._kv(title, self._c("UNAVAILABLE", DIM)))
+            else:
+                lines.append(self._kv(title, str(value)))
+
+        return lines
+
     def footer(self) -> list[str]:
         return [
             self._rule(),
@@ -385,6 +438,7 @@ class ObservatoryRenderer:
         sections.append(self.events_section(snapshot))
         sections.append(self.ingest_section(snapshot))
         sections.append(self.trust_boundary_section(snapshot))
+        sections.append(self.os_boundary_section(snapshot))
         sections.append(self.footer())
         return "\n".join("\n".join(section) for section in sections if section)
 

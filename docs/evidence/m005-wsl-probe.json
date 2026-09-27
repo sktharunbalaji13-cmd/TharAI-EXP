@@ -1,0 +1,28 @@
+{
+  "deny_ace_applied": {
+    "exit": 0,
+    "out": "processed file: C:\\Users\\KA757~1.THA\\AppData\\Local\\Temp\\m005-wsl-xetq4nbo\\evidence.json\nSuccessfully processed 1 files; Failed processing 0 files"
+  },
+  "windows_write": "DENIED (PermissionError)",
+  "wsl_write": {
+    "exit": 0,
+    "out": "1000\nWSL_WRITE_DENIED",
+    "err": "sh: 1: cannot create /mnt/c/Users/KA757~1.THA/AppData/Local/Temp/m005-wsl-xetq4nbo/evidence.json: Permission denied"
+  },
+  "wsl_identity": {
+    "exit": 0,
+    "out": "uid=1000(sktharun_balaji) gid=1000(sktharun_balaji) groups=1000(sktharun_balaji),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),100(users),1001(docker)\nsktharun_balaji"
+  },
+  "wsl_stat_owner": {
+    "exit": 0,
+    "out": "sktharun_balaji sktharun_balaji"
+  },
+  "wsl_root_write": {
+    "exit": 0,
+    "out": "WSL_ROOT_DENIED"
+  },
+  "mnt_c_mount": {
+    "exit": 0,
+    "out": "C:\\ on /mnt/c type 9p (rw,noatime,aname=drvfs;path=C:\\;uid=1000;gid=1000;symlinkroot=/mnt/,cache=5,access=client,msize=65536,trans=fd,rfd=6,wfd=6)"
+  }
+}

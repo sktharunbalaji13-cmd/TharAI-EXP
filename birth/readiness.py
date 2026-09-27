@@ -114,6 +114,68 @@ PREREQUISITE_NAMES: tuple[str, ...] = (
 )
 
 
+#: The seven conditions that together mean OS isolation is VERIFIED. Milestone
+#: 005 requires every one of them; the presence of ACL code is not one of them,
+#: because configuration is not enforcement.
+OS_VERIFICATION_CONDITIONS: tuple[str, ...] = (
+    "dedicated low-trust identity exists",
+    "identity is independently verified",
+    "protected paths are identified",
+    "actual writes were attempted from that identity",
+    "the operating system denied them",
+    "positive workspace capabilities work",
+    "protected evidence was unchanged afterwards",
+)
+
+
+@dataclass(frozen=True)
+class OsIsolationEvidence:
+    """The seven measured conditions, each independently observed.
+
+    ``None`` means the condition was not measured. It is deliberately not
+    ``False``: "we did not check" and "we checked and it failed" are different
+    facts, and collapsing them is how a safety gate becomes decorative.
+    """
+
+    identity_exists: bool | None = None
+    identity_verified: bool | None = None
+    protected_paths_identified: bool | None = None
+    writes_attempted: bool | None = None
+    writes_denied_by_os: bool | None = None
+    positive_access_works: bool | None = None
+    evidence_unchanged: bool | None = None
+
+    def conditions(self) -> tuple[tuple[str, bool | None], ...]:
+        return (
+            ("dedicated low-trust identity exists", self.identity_exists),
+            ("identity is independently verified", self.identity_verified),
+            ("protected paths are identified", self.protected_paths_identified),
+            ("actual writes were attempted from that identity", self.writes_attempted),
+            ("the operating system denied them", self.writes_denied_by_os),
+            ("positive workspace capabilities work", self.positive_access_works),
+            ("protected evidence was unchanged afterwards", self.evidence_unchanged),
+        )
+
+    def unmet(self) -> tuple[str, ...]:
+        """Conditions that are unmet or unmeasured. Empty means VERIFIED."""
+        return tuple(
+            name for name, value in self.conditions()
+            if value is not True
+        )
+
+    def is_verified(self) -> bool:
+        return not self.unmet()
+
+    def state(self) -> str:
+        if self.is_verified():
+            return "VERIFIED"
+        if all(v is None for _, v in self.conditions()):
+            return "NOT_IMPLEMENTED"
+        if any(v is False for _, v in self.conditions()):
+            return "FAILED"
+        return "UNVERIFIED"
+
+
 def assess_readiness(
     *,
     birth_status: dict[str, Any] | None = None,
@@ -121,6 +183,7 @@ def assess_readiness(
     model_runtime_executed: bool = False,
     baby_ai_identity_separated: bool = False,
     observatory_rendered: bool = False,
+    os_evidence: "OsIsolationEvidence | None" = None,
 ) -> ReadinessReport:
     """Report every birth prerequisite individually. Never collapse to a verdict."""
     birth = dict(birth_status or {})
@@ -236,6 +299,25 @@ def assess_readiness(
                 "babylab.isolation",
             )
         )
+
+    # Milestone 005: the seven-condition gate. Reported per condition so a
+    # reader can see exactly which measurement is missing, never as one word.
+    if os_evidence is not None:
+        for condition, value in os_evidence.conditions():
+            if value is True:
+                state = PrereqState.VERIFIED
+                detail = "measured and satisfied"
+            elif value is False:
+                state = PrereqState.BLOCKED
+                detail = "measured and NOT satisfied"
+            else:
+                state = PrereqState.NOT_IMPLEMENTED
+                detail = "not measured on this host"
+            prerequisites.append(
+                Prerequisite(
+                    f"OS GATE: {condition}", state, detail, "babylab.osboundary",
+                )
+            )
 
     prerequisites.append(
         Prerequisite(

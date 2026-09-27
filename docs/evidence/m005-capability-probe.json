@@ -1,0 +1,64 @@
+{
+  "whoami_user": {
+    "exit": 0,
+    "out": "USER INFORMATION\n----------------\n\nUser Name                       SID                                          \n=============================== =============================================\ntharunbalaji-la\\k.tharun balaji S-1-5-21-2406520953-1060965512-844951592-1001",
+    "err": ""
+  },
+  "privileges": {
+    "exit": 0,
+    "has_SeRestorePrivilege": false,
+    "has_SeTakeOwnershipPrivilege": false,
+    "has_SeBackupPrivilege": false,
+    "has_SeSecurityPrivilege": false,
+    "has_SeDebugPrivilege": false,
+    "raw": "PRIVILEGES INFORMATION\n----------------------\n\nPrivilege Name                Description                          State   \n============================= ==================================== ========\nSeShutdownPrivilege           Shut down the system                 Disabled\nSeChangeNotifyPrivilege       Bypass traverse checking             Enabled \nSeUndockPrivilege             Remove computer from docking station Disabled\nSeIncreaseWorkingSetPrivilege Increase a process working set       Disabled\nSeTimeZonePrivilege           Change the time zone                 Disabled"
+  },
+  "integrity": {
+    "elevated": false,
+    "in_administrators": true
+  },
+  "create_local_user": {
+    "exit": 1,
+    "out": "",
+    "err": "New-LocalUser : Access denied.\nAt line:1 char:4\n+ $p=New-LocalUser -Name 'BabyAiProbeTmp' -NoPassword -AccountNeverExpi ...\n+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    + CategoryInfo          : PermissionDenied: (BabyAiProbeTmp:LocalUser) [New-LocalUser], AccessDeniedException\n    + FullyQualifiedErrorId : AccessDenied,Microsoft.PowerShell.Commands.NewLocalUserComma"
+  },
+  "net_user_add": {
+    "exit": 2,
+    "out": "",
+    "err": "System error 5 has occurred.\n\nAccess is denied."
+  },
+  "owner_of_human_control": {
+    "exit": 0,
+    "out": "C:\\dev\\TharAI-EXP\\human_control BUILTIN\\Administrators:(I)(F)"
+  },
+  "can_set_deny_ace_as_owner": {
+    "exit": 0,
+    "out": "processed file: C:\\Users\\KA757~1.THA\\AppData\\Local\\Temp\\m005-probe-wq0nm2sj\\evidence.json\nSuccessfully processed 1 files; Failed processing 0 files",
+    "err": ""
+  },
+  "acl_after_deny_attempt": {
+    "exit": 0,
+    "out": [
+      "C:\\Users\\KA757~1.THA\\AppData\\Local\\Temp\\m005-probe-wq0nm2sj\\evidence.json Everyone:(DENY)(W)",
+      "NT AUTHORITY\\SYSTEM:(I)(F)",
+      "BUILTIN\\Administrators:(I)(F)",
+      "OWNER RIGHTS:(I)(F)",
+      "Successfully processed 1 files; Failed processing 0 files"
+    ]
+  },
+  "can_reset_acl": {
+    "exit": 0,
+    "out": "processed file: C:\\Users\\KA757~1.THA\\AppData\\Local\\Temp\\m005-probe-wq0nm2sj\\evidence.json\nSuccessfully processed 1 files; Failed processing 0 files",
+    "err": ""
+  },
+  "docker_engine": {
+    "exit": 1,
+    "out": "",
+    "err": "failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot f"
+  },
+  "wsl_default_user": {
+    "exit": 0,
+    "out": "1000",
+    "err": ""
+  }
+}
