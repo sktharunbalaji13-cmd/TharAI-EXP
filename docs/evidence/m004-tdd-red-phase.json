@@ -1,0 +1,21 @@
+{
+  "red_case_1_display_fault": {
+    "fault_injected": "birth_section replaces UNAVAILABLE with 0",
+    "assertion_run": "tests.test_m004_rendering.Invariant7UnavailableStaysUnavailable.test_environment_id_is_unavailable_when_absent",
+    "outcome": "failed",
+    "failure_count": 1,
+    "error_count": 0,
+    "failure_detail": "AssertionError: 'UNAVAILABLE' not found in '==============================================================================\\n  BABY LAB :: COGNITIVE STATE OBSERVATORY\\n==============================================================================\\n\\n  NO EXPERIMENTAL SUBJECT ATTACHED\\n  Cognitive telemetry unavailable\\n  observed at       2026-01-01T00:00:00Z\\n-- BIRTH / FOUNDATION --------------------------------------------------------\\n  model status      READY\\n  model usable      no (unproven)\\n  weights           present and matching\\n  subject           none: no birth record exists\\n  environment       0\\n  env attached      no\\n  workspace         EMPTY\\n-- STATE ---------------------------------------------------------------------\\n  No subject attached: no cognitive state to display.\\n  This is the expected result for this milestone.\\n-- RELATIONSHIPS -------------------------------------------------------------\\n  No relationships have been reported.\\n  Telemetry unavailable: nothing to relate.\\n-- RECORD INTEGRITY ----------------------------------------------------------\\n  events ingested   0\\n  highest seq       0\\n------------------------------------------------------------------------------\\n  Observations are traceable to the canonical event log.\\n=============================================================================='"
+  },
+  "red_case_2_isolation_module_absent": {
+    "probe": "git show HEAD~1:babylab/isolation.py",
+    "exit_code": 128,
+    "stderr": "fatal: path 'babylab/isolation.py' exists on disk, but not in 'HEAD~1'",
+    "interpretation": "babylab/isolation.py did not exist before Milestone 004, so the failing-first run raised ImportError: cannot import name 'assess_isolation' from 'babylab.isolation'"
+  },
+  "green_confirmation": {
+    "command": "py -3 -m pytest tests/test_m004_isolation.py tests/test_m004_rendering.py -q",
+    "exit_code": 0,
+    "last_line": "48 passed, 3 subtests passed in 10.59s"
+  }
+}
