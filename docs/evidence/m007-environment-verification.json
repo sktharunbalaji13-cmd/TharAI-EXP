@@ -1,0 +1,86 @@
+{
+  "schema": "babylab/m007-verification/v1",
+  "milestone": "M007",
+  "environment": {
+    "status": "COMPLETE",
+    "fixture_type": "deterministic_laboratory",
+    "implementation_version": "1.0.0",
+    "event_types": 11,
+    "validation_outcomes": [
+      "ACCEPTED",
+      "REJECTED",
+      "INVALID",
+      "UNAVAILABLE"
+    ],
+    "operations": [
+      "OBSERVE",
+      "GRASP",
+      "RELEASE",
+      "MOVE",
+      "INSERT",
+      "REMOVE",
+      "WAIT"
+    ]
+  },
+  "determinism": {
+    "state_carries_timestamps": false,
+    "state_carries_floats": false,
+    "quantities": "integers in stated base units (g, ml, mm, ticks, count)",
+    "float_rejected_not_rounded": true
+  },
+  "replay": {
+    "deterministic_across_branch": true,
+    "divergence_detectable": true,
+    "divergence_reported_not_hidden": true,
+    "note": "a deliberately divergent replay from a different base state is detected and reported with both hashes"
+  },
+  "security": {
+    "imports_credential_material": 0,
+    "imports_model_runtime": 0,
+    "imports_network_client": 0,
+    "modifies_acls": false,
+    "protected_evidence_unchanged_after_lifecycle": true,
+    "caller_parameters_echoed_into_log": false
+  },
+  "no_semantic_leakage": {
+    "entity_has_name_field": false,
+    "entity_has_purpose_field": false,
+    "observation_exposes_implementation_type": false,
+    "operations_derived_from": "measured physical properties",
+    "banned_tokens_scanned": 24,
+    "docstrings_excluded_from_scan": true,
+    "affordances_independent_of_history": true
+  },
+  "prohibitions_observed": {
+    "curriculum": false,
+    "semantic_object_labels": false,
+    "autonomous_loop": false,
+    "goal_generation": false,
+    "planning": false,
+    "motivation_or_curiosity": false,
+    "persistent_memory": false,
+    "learning_or_rl": false,
+    "self_modification": false,
+    "physical_interfaces": false,
+    "network_access": false,
+    "subject_created": false,
+    "baby_ai_key_created": false,
+    "birth_performed": false,
+    "m008_started": false
+  },
+  "defects_found_and_fixed": [
+    "GRASP while already holding was ACCEPTED and then silently did nothing, reporting a success reason",
+    "WAIT short-circuited validation before the cost check, draining the time resource to -390",
+    "replay computed the action id before submit attached environment_id, so divergence detection could never fire",
+    "caller-supplied parameters were copied verbatim into the append-only event log, letting an actor assert its own authorship"
+  ],
+  "structural_change": {
+    "module_moved": "babylab.measure",
+    "reason": "the environment must not import the model runtime package; the M006 surface re-exports it unchanged"
+  },
+  "tests": {
+    "m007_suite": "82 passed",
+    "portable_suite": "1103 passed, 717 subtests",
+    "host_security_suite": "15 failed, 10 passed (harness NOT_TESTABLE, unchanged since M005 closure)"
+  }
+}

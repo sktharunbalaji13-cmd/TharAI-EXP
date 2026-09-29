@@ -50,6 +50,11 @@ import enum
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Protocol, runtime_checkable
 
+# Measurement / EpistemicStatus live in a neutral module because Milestone 007's
+# environment needs them and must not depend on the runtime package. They are
+# re-exported here so the M006 surface is unchanged.
+from babylab.measure import EpistemicStatus, Measurement
+
 #: Bumped only for a breaking change to this contract. Adapters declare the
 #: version they were written against, and the registry refuses a mismatch rather
 #: than binding something subtly incompatible.

@@ -952,3 +952,110 @@ birth record, no subject, no autonomous process. The Observatory still reports
 `NO EXPERIMENTAL SUBJECT ATTACHED`. M006 provides an engine and does not turn it
 into a subject. M007 was not started.
 
+---
+
+## 2026-09-27 — Milestone 007: environment and interaction substrate
+
+### What was built
+
+An environment substrate in `environment/`: versioned state, an observation
+contract, an action contract with four distinct validation outcomes, consequences
+and deltas, explicit resources, an append-only hash-chained event stream,
+integrity-verified snapshots, branch lineage, deterministic replay, and
+Observatory telemetry. Plus one deterministic laboratory fixture to exercise it.
+
+The environment exists independently. It runs with no model, no subject, no key,
+no memory, no goals and no autonomy, and it never acts first.
+
+### The experimental premise, treated as a correctness property
+
+The premise is that useful behaviour emerges from interaction. An environment
+that supplies meaning destroys that premise, so the absence of meaning is enforced
+in code rather than asserted in prose:
+
+* `Entity` has no name, purpose, usefulness or recommended-action field, and
+  rejects any observable property outside a fixed vocabulary.
+* Operations are named for mechanics. `GRASP` exists because something is
+  movable; `INSERT` because something has measured interior capacity.
+* `implementation_type` is laboratory bookkeeping and is deliberately absent from
+  observations — how the world was built is not a property of the world.
+* A test scans every emitted string literal (docstrings excluded, since the
+  docstrings exist precisely to explain the absence) for 24 banned tokens.
+
+The strongest form of the check is the affordance test: the same action from a
+restored state must produce the same consequence as from a fresh one. A world
+that treated a caller as more experienced would fail there, and that failure is
+not detectable by looking at field names.
+
+### Timestamps are not in the state
+
+A wall-clock reading differs between an original run and a replay by microseconds,
+so a timestamp in the hashed state would make every replay diverge and divergence
+would mean nothing. Time lives in events and results; state records only what is
+true. The same reasoning excludes floats: every physical quantity is an integer
+in a stated base unit, and a float is rejected rather than rounded, because
+rounding hides a real imprecision behind a stable-looking digest.
+
+### Four defects found, three of them in code that was supposed to be the careful part
+
+1. **A silent no-op.** `GRASP` while already holding was ACCEPTED and then did
+   nothing, reporting the reason "action is currently possible". For a learning
+   environment that is the worst available failure: the caller cannot
+   distinguish "did nothing" from "succeeded quietly". The holding capacity is
+   now a real resource consumed by GRASP and refunded by RELEASE.
+
+2. **`WAIT` bypassed the cost check.** It returned ACCEPTED before affordability
+   was examined, so an exhausted clock drained to **-390**. Cost is now checked
+   before any operation-specific shortcut.
+
+3. **Replay's divergence detection was dead code.** It computed the action id
+   from the raw request, before `submit` attaches `environment_id`, so the
+   expectation lookup could never match and replay always reported success. A
+   deterministic-replay feature that cannot report divergence is a feature that
+   has never been tested.
+
+4. **Actors could narrate themselves into the immutable log.** Caller parameters
+   were copied verbatim into `action_requested`, so a request carrying
+   `{"author": "BABY_AI", "i_wrote_this": true}` wrote its own authorship claim
+   into an append-only record. Only a parameter count and a digest are recorded
+   now, and the parameter *names* are omitted too, because names are also
+   caller-supplied text.
+
+### One structural change, and why
+
+`Measurement` was introduced in M006 inside `babylab.runtime.contract`. M007
+needed it and had to run with no model runtime present, so importing it would
+have coupled the environment to a package it has no business depending on. The
+type moved to a neutral `babylab/measure.py` and the M006 surface re-exports it.
+Nothing about the type changed; only its address. This surfaced because a test
+looked for it, which is the argument for writing the independence tests at all.
+
+### Vocabulary
+
+`ResourceLevel` was renamed `ResourceAmount`. "Level" implies a rank, and rank is
+curriculum vocabulary — the environment should not contain the word even in a
+type name, because a word that means progression in one place will be read as
+progression in another. The rename was not cosmetic; a banned-token test now
+fails on it.
+
+### Verification
+
+Deterministic replay across a branch: an action sequence replayed from a
+pre-sequence snapshot reproduces the recorded final state hash exactly, in a new
+branch, with the original event stream byte-identical. A deliberately divergent
+replay — the same action from a different base state — is detected and reported
+with both hashes, so the check is known to be capable of failing.
+
+Faults are covered for invalid action, missing target, malformed action,
+impossible operation, resource exhaustion, corrupted state, corrupted snapshot,
+configuration mismatch, implementation-version mismatch and unknown snapshot.
+Every fault becomes an `environment_fault` event; nothing recovers by inventing
+state.
+
+### Unchanged
+
+M005 boundary intact. M006 still passes after the `Measurement` move. No
+foundation model, no llama.cpp binary, no `BABY_AI` key, no birth record, no
+subject, no autonomous process. The Observatory still reports NO EXPERIMENTAL
+SUBJECT ATTACHED. M008 was not started.
+
