@@ -1,0 +1,72 @@
+{
+  "schema": "babylab/m006-verification/v1",
+  "milestone": "M006",
+  "runtime_layer": {
+    "status": "COMPLETE",
+    "adapter_contract_version": "1.0.0",
+    "adapters_registered": [
+      "llamacpp"
+    ],
+    "event_types": 15,
+    "runtime_error_kinds": 12
+  },
+  "model_artifact": {
+    "state": "NOT_CONFIGURED",
+    "sha256": null,
+    "required_format": "gguf",
+    "required_location": "human_control/experiment_config/weights/",
+    "acquisition": "human-controlled; the laboratory never downloads, searches, discovers, or substitutes",
+    "downloaded": false
+  },
+  "hardware_observed": {
+    "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "vram_bytes": 8585740288,
+    "vram_status": "OBSERVED",
+    "vram_source": "nvidia-smi",
+    "cpu": "AMD Ryzen 7 7840HS w/ Radeon 780M Graphics",
+    "logical_cores": 16,
+    "system_ram_bytes": 16415322112,
+    "disk_free_bytes": 256619028480,
+    "os": "Windows 11 Home Single Language",
+    "driver_version": "592.82",
+    "note": "WMI AdapterRAM saturates at 4 GiB and is never used as a VRAM total; nvidia-smi is the authoritative source here."
+  },
+  "runtime_observed": {
+    "state": "NOT_CONFIGURED",
+    "reason": "no model configured and no llama.cpp binary present",
+    "inference_executed": false,
+    "real_inference_result": "NOT_TESTABLE",
+    "note": "InferenceResponse is exercised through a stub adapter and through birth.llamacpp's parser. The end-to-end path (binary -> GGUF -> completion) is unverified until a human supplies both the binary and the weights."
+  },
+  "security": {
+    "subject_interface_exposes_filesystem": false,
+    "subject_interface_exposes_network": false,
+    "subject_interface_exposes_subprocess": false,
+    "subject_interface_holds_key_material": false,
+    "network_imports_in_runtime_package": 0,
+    "m005_boundary_intact": true,
+    "m005_human_evidence": "ACCESS DENIED on protected paths, ALLOWED in baby_workspace, executed as BABY_AI_TEST"
+  },
+  "provenance": {
+    "model_output_class": "INHERITED_PRETRAINED",
+    "class_source": "birth.authorship (M003), reused not reinvented",
+    "model_can_claim_authorship": false,
+    "records_carry": "prompt and output SHA-256 plus lengths, not text"
+  },
+  "prohibitions_observed": {
+    "autonomous_loop": false,
+    "persistent_memory": false,
+    "self_modification": false,
+    "curriculum_encoded": false,
+    "subject_created": false,
+    "baby_ai_key_created": false,
+    "birth_performed": false,
+    "autonomous_process_started": false,
+    "m007_started": false
+  },
+  "tests": {
+    "m006_suite": "71 passed, 9 subtests",
+    "portable_suite": "1021 passed, 717 subtests",
+    "host_security_suite": "15 failed, 10 passed (harness NOT_TESTABLE, unchanged since M005 closure)"
+  }
+}

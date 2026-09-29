@@ -857,3 +857,98 @@ Portable suite 950 passed. Event chain intact, 20 events, 0 problems. Ledger 14
 entries. No model, no `BABY_AI` key, no birth, no autonomous process. The
 observer reports no experimental subject attached. M006 not started.
 
+---
+
+## 2026-09-27 — Milestone 006: foundation model and runtime
+
+### What was built
+
+A foundation-model and runtime layer, in `babylab/runtime/`: a versioned adapter
+contract, host hardware detection, an explicit adapter registry, a resource
+admission controller, a llama.cpp binding, a runtime facade that owns policy and
+events, a constrained subject-facing interface, runtime provenance, and
+Observatory telemetry.
+
+M003 already established a llama.cpp adapter, a strict foundation configuration
+and a model identity contract. M006 **extends** those rather than replacing them.
+The invocation builder, output parser and determinism rules stay in
+`birth/llamacpp.py`; M006 adds only what the contract required and M003 lacked —
+externally derived identity, digest verification before use, explicit failure
+kinds, and honest token accounting.
+
+### The distinction this milestone maintains
+
+```text
+FOUNDATION MODEL      a pretrained artifact, identified by SHA-256
+      !=
+COGNITIVE ARCHITECTURE a design, not built here
+      !=
+BABY AI SUBJECT       not created, not begun
+```
+
+Model output is recorded with M003's existing `INHERITED_PRETRAINED` class rather
+than a new vocabulary, because the distinction already existed and was already
+correct. A model that emits `{"author": "BABY_AI", "i_wrote_this": true}` changes
+nothing: that text is stored as text, and the authorship class beside it is
+derived from the key that signed the record. Tested directly.
+
+### No model was acquired
+
+No download, no `PATH` search, no discovery, no substitution, no fallback. The
+laboratory states which artifact is required and where it must live, and stops.
+`load_configuration(None)` returns `NOT_CONFIGURED`, and that is the state this
+machine is in and the state the tests assert.
+
+The required artifact, the acquisition procedure, the publisher-digest rule and
+the verification procedure are documented in `docs/m006-runtime.md`. Choosing the
+model is the human's decision, made *after* the runtime is verified so the
+runtime is never blocked on it.
+
+### Hardware, observed rather than assumed
+
+```text
+gpu            NVIDIA GeForce RTX 4060 Laptop GPU          [OBSERVED]
+vram           8.00 GiB                                     [OBSERVED]
+cpu            AMD Ryzen 7 7840HS w/ Radeon 780M Graphics  [OBSERVED]
+cores          16 logical                                   [OBSERVED]
+system_ram     15.29 GiB                                    [OBSERVED]
+disk_free      239.02 GiB                                   [OBSERVED]
+```
+
+Two measurement decisions worth recording. First, WMI's `AdapterRAM` is a 32-bit
+field that saturates at 4 GiB, so on this 8 GiB card it would report 4 GiB; it is
+therefore never used as a VRAM total, and `nvidia-smi` is preferred. Second,
+admission returns `UNKNOWN` rather than admitting or refusing when VRAM cannot be
+observed — an estimate used to refuse would reject models that fit, and an
+optimistic assumption used to admit would accept models that fail at load.
+
+### Two things a test could have got wrong, and did
+
+The M006 suite is written to avoid tests that pass because a plausible object was
+constructed. Two checks initially passed for the wrong reason, and both were
+fixed rather than loosened:
+
+- A check for "no dynamic code execution" matched the substring `eval` inside
+  `self.evaluate_capabilities`, and `re.compile` alongside a bare `compile`. It
+  now matches the final attribute name against an exact set.
+- A check that telemetry renders no mental state scanned raw source text, so it
+  matched the module docstring — which names every banned concept in order to say
+  it is absent. It now inspects emitted string literals with docstrings removed.
+
+A test that cannot detect the thing it names is worse than no test, because it
+converts an unverified claim into an apparent guarantee.
+
+### Also found and fixed
+
+`FoundationRuntime.infer` restored `READY` in a `finally` block, which silently
+clobbered the `FAILED` state set when an adapter raised. A hard adapter failure
+now leaves the runtime `FAILED` until reload or shutdown, and the `finally` only
+restores `READY` when no worse state was recorded.
+
+### Birth remains impossible
+
+No foundation model configured, no llama.cpp binary, no `BABY_AI` signing key, no
+birth record, no subject, no autonomous process. The Observatory still reports
+`NO EXPERIMENTAL SUBJECT ATTACHED`. M006 provides an engine and does not turn it
+into a subject. M007 was not started.
+
