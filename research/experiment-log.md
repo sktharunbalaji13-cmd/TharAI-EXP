@@ -1059,3 +1059,89 @@ foundation model, no llama.cpp binary, no `BABY_AI` key, no birth record, no
 subject, no autonomous process. The Observatory still reports NO EXPERIMENTAL
 SUBJECT ATTACHED. M008 was not started.
 
+---
+
+## 2026-09-27 — Milestone 008: subject architecture and first-experience boundary
+
+### What was built
+
+A subject boundary in `subject/`: externally governed identity, an immutable
+laboratory creation record, an explicit lifecycle, minimal versioned state,
+experience records, channel-based provenance, a narrow single-shot interface, a
+deterministic test harness, and infrastructure-only telemetry.
+
+The central distinction is structural:
+
+```text
+FOUNDATION MODEL != SUBJECT != ENVIRONMENT != LABORATORY
+```
+
+A pretrained artifact is referenced, never identified with. The subject's digest
+never equals the artifact's digest, and the artifact classification is always
+INHERITED_PRETRAINED — structurally, not by declaration.
+
+### The harness is not a birth
+
+The whole milestone stands or falls on this. Test subjects live in memory and
+caller-supplied temporary directories. They are never written to
+`human_control/`, never given a keyring role, never registered in the real
+session registry. The birth ceremony's two tripwires — `birth_records/BIRTH.json`
+and an active BABY_AI key — are asserted absent after the suite runs, and the
+observer still reports NO EXPERIMENTAL SUBJECT ATTACHED. A test subject is not
+the Baby, and the laboratory cannot see one as attached because attachment
+criteria were never constructed.
+
+### Experience is a record, not a memory
+
+A sequence of experiences is a history, and reading a history is not remembering.
+M008 builds the history. Retrieval, consolidation, and everything that would
+make it memory are separate milestones with separate reviews. The state carries
+no store of any kind, and unimplemented capabilities are named absences
+("semantic_memory: UNAVAILABLE - no memory system exists") rather than empty
+lists — an empty list would imply a system that exists and is merely empty.
+
+### Three things the implementation got wrong before the tests passed
+
+1. **The harness skipped CREATED.** `create_subject` built the creation record
+   but left the lifecycle at UNCREATED, so `attach` failed on its own
+   transition table. Creation must move the record to CREATED explicitly; the
+   table was right and the harness was wrong.
+
+2. **The head hash was circular.** The stored experience's hash covers the
+   resulting state hash, which covers the state, which covers the head. There
+   is no ordering that resolves this, so the experience carries a `content_hash`
+   — everything except the linkage — which the state advances with, and the
+   full hash covers the completed linkage. Both are checked: the head names
+   content that exists, and the full hash names the completed record.
+
+3. **Replay determinism needed deterministic observation references.** M007's
+   `observation_id` was random, so two identical runs produced different
+   observation hashes and replay comparison failed on identity rather than
+   content. Observation ids are now derived from environment, version and state
+   hash. Two views of the same state are the same observation.
+
+### One check the tests improved
+
+`verify_record` checks a record's self-consistency, which a well-formed record
+about *someone else* also satisfies. The anti-substitution property needed its
+own function: `record_belongs_to` checks that the record names the subject AND
+that its hash is the hash the subject's state already carries. The test that
+prompted it asserted the wrong thing (that a foreign record "must not verify"),
+and the fix was a new function rather than a stronger hash.
+
+### Also verified in passing
+
+Observation references point at the right states. Duplicate sequence numbers
+are impossible by construction (sequence-derived ids). The `issuer` string check
+is documented as the schema-level guard with M005 storage boundaries and key
+custody as its required companions, not implied substitutes. ACTIVE is process
+state only. The interface has no `step`, because a step the harness could call
+in a loop is an agent loop with one line of glue.
+
+### Unchanged
+
+M005 boundary intact at 11/11 with workspaces un-denied. M006 still passes
+after no changes to it. No foundation model, no llama.cpp binary, no BABY_AI
+key, no birth record, no subject attached, no autonomous process. M009 was not
+started.
+

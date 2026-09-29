@@ -23,7 +23,6 @@ expose is reported ``UNAVAILABLE`` rather than omitted silently or guessed.
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -145,8 +144,15 @@ def build_observation(
         for entity_id in sorted(state.entities)
     )
     resources = dict(state.resource_observations())
+    # Deterministic identifier: the same environment observing the same state
+    # produces the same id. A random id would make two identical runs produce
+    # different observation hashes, which would break replay comparison on
+    # identity rather than on content. Two views of the same state *are* the
+    # same observation, so sharing an id is correct, not a collision.
     return Observation(
-        observation_id=f"obs-{uuid.uuid4().hex[:16]}",
+        observation_id=(
+            f"obs-{environment_id}-{state.state_version}-{state.state_hash[:12]}"
+        ),
         environment_id=environment_id,
         state_version=state.state_version,
         state_hash=state.state_hash,

@@ -1,0 +1,104 @@
+{
+  "schema": "babylab/m008-verification/v1",
+  "milestone": "M008",
+  "subject_architecture": {
+    "status": "COMPLETE",
+    "identity_schema": "babylab/subject-identity/v1",
+    "state_schema": "babylab/subject-state/v1",
+    "creation_schema": "babylab/subject-creation/v1",
+    "interface_version": "babylab/subject-interface/v1",
+    "identity_issuer": "LABORATORY (only)"
+  },
+  "foundation_separation": {
+    "subject_digest_equals_artifact_digest": false,
+    "artifact_classification": "INHERITED_PRETRAINED",
+    "foundation_creates_no_experience": true,
+    "model_completion_classified": "INHERITED_PRETRAINED"
+  },
+  "first_experience_boundary": {
+    "at_creation": 0,
+    "after_attach_untouched": 0,
+    "after_one_interaction": 1,
+    "no_backfilled_history": true,
+    "no_invented_memories": true
+  },
+  "lifecycle": {
+    "states": [
+      "UNCREATED",
+      "CREATED",
+      "ATTACHED",
+      "ACTIVE",
+      "PAUSED",
+      "TERMINATED"
+    ],
+    "creation_ends_in": "CREATED (never ACTIVE)",
+    "active_means": "laboratory process state only",
+    "self_transition_possible": false
+  },
+  "state": {
+    "versioned": true,
+    "hashable": true,
+    "memory_fields": 0,
+    "unimplemented_capabilities_named": 10
+  },
+  "provenance": {
+    "sources": [
+      "HUMAN",
+      "ENVIRONMENT",
+      "FOUNDATION_MODEL",
+      "SUBJECT",
+      "LABORATORY_DERIVED"
+    ],
+    "origins": [
+      "OBSERVED",
+      "DERIVED",
+      "SUBJECT_GENERATED",
+      "INHERITED_PRETRAINED",
+      "UNAVAILABLE"
+    ],
+    "attribution_basis": "recording channel, never payload fields",
+    "liar_payload_changes_attribution": false
+  },
+  "harness": {
+    "kind": "deterministic test harness, not an autonomous runtime",
+    "loop_method_exists": false,
+    "subjects_live_in": "memory and caller-supplied temp dirs only",
+    "touches_human_control": false,
+    "touches_real_keyring": false,
+    "registers_in_real_registry": false
+  },
+  "security": {
+    "m005_boundary_intact": "11/11 protected paths denied",
+    "workspaces_undenied": true,
+    "subject_package_imports_credentials": 0,
+    "subject_package_imports_network": 0,
+    "subject_package_imports_model_runtime": 0,
+    "protected_evidence_unchanged_after_lifecycle": true
+  },
+  "prohibitions_observed": {
+    "birth_ceremony": false,
+    "baby_ai_key": false,
+    "subject_attached": false,
+    "curriculum": false,
+    "goals": false,
+    "motivation": false,
+    "personality": false,
+    "autonomous_loop": false,
+    "training": false,
+    "persistent_memory": false,
+    "self_modification": false,
+    "physical_interfaces": false,
+    "m009_started": false
+  },
+  "defects_found_and_fixed": [
+    "harness left new subjects at UNCREATED instead of CREATED",
+    "subject-state head hash was circular with the experience hash; split into content_hash (stable before the state exists) and experience_hash (complete linkage)",
+    "M007 observation_id randomness poisoned cross-run replay comparison; ids are now derived from environment, version and hash",
+    "verify_record checked self-consistency only; binding a record to a subject needed its own function (record_belongs_to)"
+  ],
+  "tests": {
+    "m008_suite": "84 passed, 24 subtests",
+    "portable_suite": "1187 passed, 741 subtests",
+    "host_security_suite": "15 failed, 10 passed (harness NOT_TESTABLE, unchanged since M005 closure)"
+  }
+}
