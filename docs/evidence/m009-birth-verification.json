@@ -1,0 +1,75 @@
+{
+  "schema": "babylab/m009-verification/v1",
+  "milestone": "M009",
+  "gate": {
+    "prerequisites_evaluated": 14,
+    "verdict_on_this_machine": "BLOCKED",
+    "blocking_reason": "MODEL_NOT_CONFIGURED",
+    "unknown_becomes_pass": false,
+    "raising_check_blocks": true,
+    "all_checks_always_run": true
+  },
+  "ceremony": {
+    "modes": [
+      "REAL",
+      "SIMULATED"
+    ],
+    "real_mode_outcome": "ABORTED at verify_prerequisites",
+    "real_mode_failure": "GATE_BLOCKED: MODEL_NOT_CONFIGURED",
+    "simulated_mode_outcome": "COMPLETE, explicitly NOT_A_BIRTH",
+    "simulated_steps": 17,
+    "partial_birth_can_appear_successful": false,
+    "rollback_deletes_evidence": false
+  },
+  "t_birth": {
+    "established_in_simulated_run": true,
+    "immutable": true,
+    "names_subject_foundation_environment_ceremony": true
+  },
+  "key_custody": {
+    "decision": "NOT_REQUIRED",
+    "provisioned": false,
+    "provision_key_refuses": true
+  },
+  "lifecycle_control": {
+    "pause_preserves_state": true,
+    "resume_refuses_non_paused": true,
+    "terminate_permanent_and_preserves_history": true,
+    "subject_may_invoke": false
+  },
+  "audit": {
+    "schema": "babylab/birth-audit/v1",
+    "questions": 16,
+    "derived_from_evidence": true,
+    "verification_recomputes_answers": true,
+    "doctored_audit_detected": true
+  },
+  "replay": {
+    "replays_recorded_first_action": true,
+    "divergence_reported": true,
+    "state_integrity_weakened": false
+  },
+  "real_birth": {
+    "status": "NOT_PERFORMED",
+    "reason": "no foundation model is configured; the gate blocks on MODEL_NOT_CONFIGURED and the ceremony aborts before identity issuance",
+    "subject_created": false
+  },
+  "prohibitions_observed": {
+    "autonomous_loop": false,
+    "memory_system": false,
+    "learning_or_training": false,
+    "self_modification": false,
+    "curriculum": false,
+    "network_access": false,
+    "physical_interfaces": false,
+    "baby_ai_key": false,
+    "birth_record": false,
+    "subject_attached": false,
+    "m010_started": false
+  },
+  "tests": {
+    "m009_suite": "64 passed, 6 subtests",
+    "portable_suite": "1251 passed, 747 subtests",
+    "host_security_suite": "15 failed, 10 passed (harness NOT_TESTABLE, unchanged since M005 closure)"
+  }
+}

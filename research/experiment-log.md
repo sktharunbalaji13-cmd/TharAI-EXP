@@ -1145,3 +1145,71 @@ after no changes to it. No foundation model, no llama.cpp binary, no BABY_AI
 key, no birth record, no subject attached, no autonomous process. M009 was not
 started.
 
+---
+
+## 2026-09-27 — Milestone 009: birth ceremony and first controlled experience
+
+### What was built
+
+The transition machinery: a fourteen-prerequisite safety gate with honest
+PASS/FAIL/UNKNOWN semantics, a staged birth ceremony with per-step events and
+two labelled modes, an immutable T_birth record, an explicit key-custody
+decision, laboratory pause/resume/terminate, a machine-readable audit derived
+from evidence rather than prose, ceremony replay with divergence reporting, and
+birth-state Observatory display.
+
+REAL_BIRTH = NOT_PERFORMED. No model is configured, so the gate blocks on
+MODEL_NOT_CONFIGURED, the ceremony aborts at prerequisites, and the laboratory
+ends with no subject. That is the successful M009 result the specification
+describes for this state: the machinery built, the blocking proven, nothing
+manufactured.
+
+### The gate is a decision, not a report
+
+Two rules, both tested with injected checks because the real checks depend on
+the machine: UNKNOWN never becomes PASS, and a check that raises blocks. Absence
+is FAIL, not UNKNOWN — "no model configured" is an observed fact. Every check
+always runs, so one evaluation shows all fourteen answers instead of stopping
+at the first failure and hiding the rest. Security checks re-inspect the live
+filesystem rather than reading M005's evidence file; checks that would need a
+side effect say what they checked instead of performing it.
+
+### Partial birth cannot look like success
+
+There is no code path past a failure: each step is checked before the next
+begins, the failure is recorded with step, reason and detail, the record is
+terminated, and nothing downstream is fabricated. The aborted REAL run on this
+machine has two events — preflight and the failed gate — and no subject id, no
+T_birth, no experience, no completion. Rollback is evidence preservation, never
+cleanup.
+
+### Key custody is NOT_REQUIRED, and that is a decision with reasons
+
+The ceremony needs no signing: provenance is laboratory-generated and
+hash-linked, and no BABY_AI-authored content exists yet. Provisioning a key for
+appearance would create the active BABY_AI role that makes the observer report
+attachment. `provision_key` refuses outright, because production key creation
+must never happen as a ceremony side effect.
+
+### The audit is a check, not a transcript
+
+Sixteen questions answered by re-deriving from the ceremony record. Verification
+rebuilds every answer independently and names disagreements; a doctored audit
+fails, demonstrated by test. Replay rebuilds the deterministic environment,
+replays the recorded first action, and compares hashes without weakening state
+integrity to make the comparison pass.
+
+### What the ceremony does not do
+
+No loop, no scheduler, no background process — asserted over the AST with the
+caller-driven replay explicitly excluded by name. No memory, no learning, no
+training vocabulary, no physical interfaces, no network. No curriculum anywhere
+in the package. ACTIVE is process state only.
+
+### Unchanged
+
+M005 boundary intact at 11/11 with workspaces un-denied. No BABY_AI key, no
+birth record, no subject attached, no model, no weights, no autonomous process.
+The observer still reports NO EXPERIMENTAL SUBJECT ATTACHED. M010 was not
+started.
+
