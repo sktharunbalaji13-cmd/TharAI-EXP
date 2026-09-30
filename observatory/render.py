@@ -931,6 +931,63 @@ class ObservatoryRenderer:
                 lines.append("  " + self._c(row, DIM))
         return lines
 
+    def m014_section(self, snapshot: ObservatorySnapshot) -> list[str]:
+        """Milestone 014: the execution boundary, and whether a birth happened.
+
+        Rendered next to the birth gate rather than in the foundation area,
+        because M014 consumed the foundation selection and consumed the gate, and
+        putting the result apart from its inputs would ask a reader to connect
+        them themselves.
+
+        ``PERFORMED`` is the only value that is ever shown as a success. Until a
+        birth record exists on disk, every other field reads as an absence, and
+        the section says so once rather than leaving a reader to infer it from a
+        column of zeros.
+        """
+        block = snapshot.m014 or {}
+        if not block:
+            return []
+        lines = [self._rule("M014 EXECUTION BOUNDARY")]
+
+        performed = block.get("real_birth") == "PERFORMED"
+        lines.append(self._kv("real birth", self._c(
+            str(block.get("real_birth", "NOT_PERFORMED")),
+            FG_GREEN if performed else FG_YELLOW,
+        )))
+        lines.append(self._kv("gate", str(block.get("state", "UNAVAILABLE"))))
+
+        record_present = bool(block.get("birth_record_present"))
+        lines.append(self._kv("birth record", self._c(
+            "PRESENT" if record_present else "ABSENT",
+            FG_GREEN if record_present else DIM,
+        )))
+
+        for label, key in (
+            ("subject", "subject"),
+            ("identity issuer", "identity_issuer"),
+            ("lifecycle", "lifecycle"),
+            ("T_birth", "t_birth"),
+            ("first experience", "first_experience"),
+            ("experience count", "experience_count"),
+            ("second interaction", "second_interaction"),
+        ):
+            value = block.get(key)
+            if value in (None, ""):
+                continue
+            lines.append(self._kv(label, str(value)))
+
+        if block.get("birth_record_hash"):
+            lines.append(
+                self._kv("record hash", self._c(
+                    str(block["birth_record_hash"])[:32], DIM))
+            )
+
+        note = block.get("note")
+        if note and self.options.detail:
+            for row in _wrap(str(note), self.options.width - 4):
+                lines.append("  " + self._c(row, DIM))
+        return lines
+
     def footer(self) -> list[str]:
         return [
             self._rule(),
@@ -947,6 +1004,7 @@ class ObservatoryRenderer:
         sections.append(self.foundation_section(snapshot))
         sections.append(self.deployment_section(snapshot))
         sections.append(self.birth_ceremony_section(snapshot))
+        sections.append(self.m014_section(snapshot))
         sections.append(self.runtime_verification_section(snapshot))
         sections.append(self.state_section(snapshot))
         sections.append(self.graph_section(snapshot))

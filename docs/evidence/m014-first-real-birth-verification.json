@@ -1,0 +1,130 @@
+{
+  "schema": "babylab/m014-first-real-birth-verification/v1",
+  "milestone": "M014",
+  "title": "Human-selected foundation deployment and the first real birth",
+  "generated_at": "2026-09-30T10:30:38.474Z",
+  "status": "BLOCKED",
+  "mode": "REAL",
+  "stage": "declaration",
+  "real_birth_performed": false,
+  "subject_id": "NONE",
+  "t_birth": "UNAVAILABLE",
+  "lifecycle": "UNCREATED",
+  "first_experience": "NOT_PERFORMED",
+  "stop_reason": "no human deployment declaration exists at C:\\dev\\TharAI-EXP\\human_control\\experiment_config\\model_deployment.json. M014 does not create one, and does not choose a foundation on the human's behalf.",
+  "refusals": [
+    "[declaration] no human deployment declaration exists at C:\\dev\\TharAI-EXP\\human_control\\experiment_config\\model_deployment.json. M014 does not create one, and does not choose a foundation on the human's behalf."
+  ],
+  "declaration": {
+    "path": "C:\\dev\\TharAI-EXP\\human_control\\experiment_config\\model_deployment.json",
+    "exists": false,
+    "state": "NOT_CONFIGURED",
+    "declared_by": "",
+    "rationale": "",
+    "attributed": false,
+    "declared_at": "",
+    "model_path": "",
+    "model_sha256": "",
+    "model_family": "",
+    "model_quantization": "",
+    "model_external_digest": "",
+    "model_external_source": "none",
+    "runtime_path": "",
+    "runtime_expected_version": "",
+    "runtime_implementation": "llama.cpp",
+    "detail": "no deployment declaration at C:\\dev\\TharAI-EXP\\human_control\\experiment_config\\model_deployment.json. A file merely existing on this machine is not a selection: M011 recorded an unconfigured llama.cpp binary that was correctly left unselected, and it stays unselected until a human names it here."
+  },
+  "subject_account": {
+    "required_account": "THARUNBALAJI-LA\\BABY_AI_TEST",
+    "can_launch_as_subject": false,
+    "held_privileges": {
+      "SeImpersonatePrivilege": false,
+      "SeAssignPrimaryTokenPrivilege": false
+    },
+    "missing_privileges": [
+      "SeImpersonatePrivilege",
+      "SeAssignPrimaryTokenPrivilege"
+    ],
+    "required_privileges": [
+      "SeImpersonatePrivilege",
+      "SeAssignPrimaryTokenPrivilege"
+    ],
+    "state": "NOT_TESTABLE",
+    "path_taken": "C: the condition remains NOT_TESTABLE. The laboratory does not grant privileges, weaken ACLs, remove M005 deny ACEs, store credentials, or ask a human to paste a password in order to make this test pass. Operator execution is not evidence about BABY_AI_TEST.",
+    "operator_execution_accepted_as_subject": false
+  },
+  "gate": {
+    "m013_panel_state": "BLOCKED",
+    "breakdown": {
+      "BLOCKED": 16
+    }
+  },
+  "observatory": {
+    "m014_panel": {
+      "schema": "babylab/m014-status/v1",
+      "source": "declaration_and_record_only",
+      "state": "BLOCKED",
+      "may_proceed": false,
+      "real_birth": "NOT_PERFORMED",
+      "subject": "NONE",
+      "first_experience": "NOT_PERFORMED",
+      "t_birth": "UNAVAILABLE",
+      "lifecycle": "UNCREATED",
+      "experience_count": "UNAVAILABLE",
+      "birth_record_present": false,
+      "birth_record_path": "C:\\dev\\TharAI-EXP\\human_control\\birth_records\\BIRTH.json",
+      "note": "read from the deployment declaration and, if one exists, the birth record. This panel runs no verification, invokes no runtime, launches no process, and performs no ceremony; it also cannot report a READY gate, because the evidence READY requires comes from the verification command. No field here is inferred from a subject's output.",
+      "forbidden_display_terms": [
+        "intelligence",
+        "consciousness",
+        "conscious",
+        "sentience",
+        "sentient",
+        "awareness",
+        "personality",
+        "curiosity",
+        "emotion",
+        "motivation",
+        "developmental score",
+        "learning score",
+        "readiness"
+      ]
+    },
+    "read_only": true,
+    "executes_nothing": true
+  },
+  "mutations": {
+    "event_store_before": 20,
+    "event_store_after": 20,
+    "events_appended": 0,
+    "provenance_before": 14,
+    "provenance_after": 14,
+    "provenance_appended": 0,
+    "keyring_unchanged": true,
+    "keys": [
+      ".gitkeep",
+      "HK-86ac3dc595e9.key",
+      "SK-239101557c64.key"
+    ],
+    "protected_provenance_unchanged": true,
+    "birth_record_present": false,
+    "model_dir_present": false,
+    "environment_state_unchanged": true,
+    "event_chain_intact": true
+  },
+  "not_implemented": {
+    "memory": true,
+    "learning": true,
+    "autonomy": true,
+    "self_modification": true,
+    "second_interaction": true,
+    "curriculum": true
+  },
+  "tests": {
+    "m014": "110 passed",
+    "m013": "133 passed",
+    "portable_suite": "1685 passed, 749 subtests passed",
+    "host_security": "15 failed, 10 passed, 13 subtests -- NOT_TESTABLE, the harness cannot impersonate BABY_AI_TEST (no SeImpersonatePrivilege, no SeAssignPrimaryTokenPrivilege)"
+  },
+  "m015": "NOT STARTED"
+}

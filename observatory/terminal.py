@@ -64,6 +64,7 @@ class ObservatorySession:
         self._runtime_verification = self._read_runtime_verification()
         self._deployment = self._read_deployment()
         self._birth_ceremony = self._read_birth_ceremony()
+        self._m014 = self._read_m014()
         self.registry = SubjectRegistry(self.keyring, self._birth)
         self.reader = ObservatoryReader(store=self.store, clock=self.clock)
         self.attributor = Attributor(
@@ -225,7 +226,39 @@ class ObservatorySession:
                 "note": f"the birth-ceremony panel could not be read: {exc}",
             }
 
+    def _read_m014(self) -> dict[str, Any]:
+        """M014's outcome, read from a declaration and a birth record.
+
+        :func:`birth.m014_status.birth_record_only` reads files and reports. It
+        performs no verification, invokes no runtime, launches no process, and
+        runs no ceremony. It imports :mod:`birth.m014_status` and
+        :mod:`birth.record14` -- both pure -- and deliberately not
+        :mod:`birth.m014`, which holds ``execute_m014``. Splitting the record
+        path and hash into their own module is what makes that separation
+        possible without the display having to reimplement either.
+
+        M014 is the milestone that can actually birth, so the display is kept
+        furthest from it: the panel can report that a birth happened, and has no
+        route by which it could cause one.
+        """
+        from babylab.errors import BabyLabError
+
+        try:
+            from birth.m014_status import birth_record_only
+
+            return birth_record_only(self.paths.root)
+        except (BabyLabError, OSError, ValueError) as exc:
+            return {
+                "state": "UNAVAILABLE",
+                "real_birth": "NOT_PERFORMED",
+                "subject": "NONE",
+                "t_birth": "UNAVAILABLE",
+                "birth_record_present": False,
+                "note": f"the M014 panel could not be read: {exc}",
+            }
+
     # -- updating ---------------------------------------------------------
+
     def update(self) -> ObservatorySnapshot:
         """Consume new events and return the resulting snapshot.
 
@@ -259,6 +292,7 @@ class ObservatorySession:
             runtime_verification=self._runtime_verification,
             deployment=self._deployment,
             birth_ceremony=self._birth_ceremony,
+            m014=self._m014,
         )
 
     def render(self, options: RenderOptions | None = None) -> str:

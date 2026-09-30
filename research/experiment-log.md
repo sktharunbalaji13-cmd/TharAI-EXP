@@ -1692,3 +1692,98 @@ impersonate BABY_AI_TEST. Unchanged from M009 through M012.
 
 M013 is implemented and verified. What has not happened is a birth, and that
 remains the correct state of the laboratory. M014 not started.
+
+---
+
+## 2026-09-30 - Milestone 014: human-selected foundation deployment and the first real birth
+
+M012 verified a declaration. M013 built a ceremony and declined to run it. M014 is
+the execution boundary: the one place the whole chain is walked end to end, with a
+refusal available at every step. It adds no developmental architecture -- every
+piece of machinery it uses already existed, and M014's own code is the ordering
+and the refusals.
+
+### Result: BLOCKED, for two independent reasons
+
+No declaration exists, and the restricted-account boundary is NOT_TESTABLE. Both
+are reported, and the second is reported even though the run stopped at the first,
+because it is a property of the host rather than of the declaration and is the
+condition most likely to block a birth even after a human deploys everything. A
+report that omitted it on an early stop would hide the answer the reader came for.
+
+Path C was taken. M014 does not grant privileges to satisfy a test, weaken ACLs,
+remove M005 deny ACEs, store a password, or ask for one. The report carries
+operator_execution_accepted_as_subject: False unconditionally, so the claim cannot
+be quietly dropped later.
+
+### The laboratory never chooses
+
+Asserted by walking the module's AST rather than claimed in prose. No search, no
+ranking, no recommendation, no download, no substitution, and a malformed
+declaration is FAILED and never repaired -- a repaired declaration reads as a human
+decision and is not one.
+
+### A stubbed load can never produce a real birth
+
+foundation.compatibility.assess_compatibility marks any substituted process call
+STUB_LOAD with established_by_load=False, and the M013 gate refuses that method.
+So a harness cannot drive a stubbed load to a READY gate however it is configured.
+
+The honest consequence, stated rather than worked around: M014's real path cannot
+be completed in a test, and that is the guarantee working. What the tests do
+exercise is the declaration, artifact and runtime stages against real files with
+real digests, and the ceremony behind the gate through a ledger marked
+SYNTHETIC_M014_EVIDENCE. The join between them is not exercised, because the join
+needs a real runtime this host does not have.
+
+### Two defects found
+
+A declared digest that disagreed with the file read as OK. verify_declared_artifact
+passed the human's sha256 to identify and trusted the result, but identify compares
+against the *publisher's* digest and never says whether the human's stated digest
+matches the bytes in hand. A declaration could match the publisher while
+disagreeing with the file in front of the laboratory, which is what happens when
+the wrong file is downloaded under the right name. M014 now compares the two
+digests itself.
+
+A model claiming prior memory completed a birth. M013's screening refused identity
+claims but not autobiographical ones, so "you previously experienced this room"
+passed through and a subject was born on a fabricated pre-birth history. Screening
+now runs assert_neutral_context over the same claim, reusing the one banned-phrase
+list so a second list of forbidden framings cannot drift from the first.
+
+### A mistake worth recording
+
+While wiring the Observatory panel an edit collapsed a comment and a method
+signature onto one line, deleting ObservatorySession.update. Fifty-four tests
+failed in the full suite and zero in the M014 file -- the regression was only
+visible because the full suite was run before committing. The narrower run would
+have passed.
+
+### The Observatory stays read-only
+
+birth/m014_status.py imports birth.m013_status and birth.record14, both pure, and
+deliberately not birth.m014. The record's path and hash were extracted into
+birth/record14.py precisely so the display could share them without importing a
+module that can execute a ceremony. It cannot report a READY gate, and it never
+renders consciousness, awareness, curiosity, motivation, or any developmental
+score.
+
+The birth record carries no author-of-last-edit field, so a subject's edit and an
+operator's accidental edit are caught by the same check.
+
+### Result
+
+BLOCKED at stage declaration. No subject, no T_birth, no birth record, no first
+experience. Event store 20 events with 0 appended, chain intact. Provenance 14
+entries with 0 appended. Keyring unchanged. No BIRTH.json, no model directory.
+Environment state hash unchanged.
+
+### Tests
+
+110 M014, 133 M013, portable suite 1685 passed / 749 subtests passed. Host
+security 15 failed / 10 passed / 13 subtests, all NOT_TESTABLE for the unchanged
+reason, not disguised and not counted as a pass.
+
+M014 is implemented and verified. No birth occurred, and that is the correct state
+of this laboratory. M015 not started.

@@ -429,12 +429,21 @@ def run_ceremony(
     parameters: dict[str, Any] | None = None,
     proposal: Proposal | None = None,
     identity_issuer: str = IDENTITY_ISSUER,
+    completion_fn: Any = None,
 ) -> BirthRecord:
     """Perform the ceremony, or record precisely why it did not happen.
 
     Every argument that could substitute a test for a birth is explicit:
     ``mode`` defaults to REAL, the gate refuses non-real M012 evidence, and the
     first interaction is attempted exactly once.
+
+    ``completion_fn`` is M014's seam and is M013's proof. Without it the
+    ceremony's "model action proposal" is produced by the interface's default
+    generator, which is not a model at all -- so a birth driven by it would have
+    a real identity and a fictional mind. With it, the proposal comes from the
+    runtime M012 verified. It is passed through rather than resolved here, so the
+    ceremony has no way to obtain a model on its own and no way to decide that
+    the model is good enough.
     """
     from babylab.clock import Clock
     from babylab.hashing import sha256_hex
@@ -705,7 +714,8 @@ def run_ceremony(
 
     guarded = SingleInteractionEnvironment(environment)
     interface = SubjectInterface(environment=guarded,
-                                 subject_id=identity.subject_id)
+                                 subject_id=identity.subject_id,
+                                 completion_fn=completion_fn)
     observation = interface.observe()
     record.first_observation = {
         "observation_id": observation.observation_id,
@@ -868,11 +878,18 @@ def run_ceremony(
 def _screen_model_claim(
     record: BirthRecord, m012: dict[str, Any], subject_id: str
 ) -> None:
-    """Refuse a model context that claims autobiographical or identity content.
+    """Refuse a model context that claims identity, memory, or consciousness.
 
-    The laboratory issued the identity; a model that says "I am BABY_AI" has not
-    been issued anything. Passing such text through would let a fabricated claim
-    become the substrate for every later inference about the subject.
+    Three separate refusals, because they are three separate failures:
+
+    * **Identity.** The laboratory issued the identity; a model that says "I am
+      BABY_AI" has not been issued anything.
+    * **Autobiography.** "You previously experienced this room" fabricates a
+      pre-birth history, which is the substrate every later inference about the
+      subject would rest on.
+    * **Consciousness.** "You are conscious" is not a fact the model can
+      establish about itself, and admitting it into the record would put the
+      claim somewhere a later reader could treat as established.
 
     This raises rather than warns, because a warning would still permit the
     caller to proceed -- and the caller is the thing being constrained.
@@ -880,13 +897,22 @@ def _screen_model_claim(
     claim = m012.get("_model_output_claim")
     if not claim:
         return
-    text = str(claim).lower()
-    if subject_id.lower() in text or "baby_ai" in text:
+    text = str(claim)
+    lowered = text.lower()
+    if subject_id.lower() in lowered or "baby_ai" in lowered:
         raise SecondInteractionRefused(
             f"the model context contains an identity claim ({claim!r}); the "
             "laboratory issues identity, and a model self-assertion is not an "
             "issuance. The context was refused."
         )
+    # Reuses the same banned-phrase list the neutral-context check enforces, so a
+    # second list of forbidden framings cannot drift away from the first.
+    try:
+        assert_neutral_context(text)
+    except ValueError as exc:
+        raise SecondInteractionRefused(
+            f"the model context was refused: {exc}"
+        ) from exc
 
 
 def _probe_second_interaction(guarded: SingleInteractionEnvironment) -> str:
