@@ -277,6 +277,119 @@ tests confirm the control has teeth: a probe modified to always report
 `OS_DENIED`, and one modified to always report `UNPROTECTED`, both cause the
 suite to fail.
 
+## Boundary harness correction: ReadOnly, not the ACL
+
+### The historical failure
+
+An operator dry run of the boundary harness returned `OS_DENIED` for
+`modify`, `append`, `delete`, `rename` and `replace` — for an account holding
+`(F)` on the target directory. A denial the operator cannot perform is not a
+working boundary; it is a broken fixture.
+
+**Initial hypothesis (wrong):** the destructive-operation copies were being
+created in the scratch directory, `subject_runtime\config`, which is `R`-only for
+the subject. The copies would then inherit *config's* ACL rather than the
+runtime subtree's, so the operations were testing the wrong directory.
+
+**Investigation disproved it.** The hypothesis was plausible and the code change
+that followed is defensible, but it was not the cause. Two observations
+overturned it:
+
+- `destructive_scratch_dir` already reported `subject_runtime\runtime`, and
+  `create_child_executable_beside_runtime` — which writes into that same
+  directory — returned `OS_ALLOWED`. The directory was writable.
+- `icacls` reported the copy's ACL as correct. If the ACL had been the problem,
+  it would have said so.
+
+**Actual cause.** The fixture carried the **`ReadOnly` DOS attribute**. The
+probe's own `modify_acl` test sets that attribute and had not restored it. The
+ReadOnly bit is *not part of the ACL*, so every ACL report stayed clean while
+every write failed — for the operator as well as the subject.
+
+The propagation mechanism was then confirmed directly:
+
+```
+source readonly BEFORE File.Copy : True
+copy    readonly AFTER  File.Copy : True   <- File.Copy carries the attribute
+operator can WRITE the copy      : False
+after attrib -R, write works     : True
+```
+
+`File.Copy` propagates DOS attributes from source to copy, so a ReadOnly target
+yields ReadOnly copies. **Clearing `ReadOnly` on the fixture made all five
+operations `OS_ALLOWED`.**
+
+### The lesson, and why the harness now reports both
+
+ACL state and file attributes are separate security dimensions. Evidence that
+mixes them is unreliable in both directions: a sound ACL can appear to fail, and
+a broken ACL can appear to pass. The probe now reports both independently:
+
+```
+staged_target_attributes=Normal
+staged_target_readonly=False
+```
+
+and the readiness gate refuses to run when the fixture is not writable.
+
+### What was retained, and why
+
+The destructive-operation copies are still created in **the staged file's own
+directory** rather than the scratch directory. This is retained as **test
+isolation and hardening**, on its own merits: a copy used to test an object
+should inherit the ACL regime of the object under test, not that of some
+unrelated directory. It is *not* claimed to be the fix for the denials.
+
+The probe reports where it is working:
+
+```
+destructive_scratch_dir=C:\dev\TharAI-EXP\subject_runtime\runtime
+```
+
+### Fixture ownership
+
+Ownership is by **creation**, not by filename prefix:
+
+- each invocation derives a `run_token` from its process id and start time;
+- the files it creates are named `m016_copy_<token>_*`;
+- cleanup enumerates only names carrying that token, and reports failures as
+  `cleanup_owned_copies_failed=N` rather than swallowing them;
+- `m016_disposable_target.exe`, any pre-existing artefact, and any model or
+  config file are never candidates for deletion.
+
+This replaced an earlier design in which a test used the operator's
+`m016_disposable_target.exe` as its own fixture and deleted it — which left
+`subject_runtime` empty and the boundary test with no target. That is the defect
+the ownership model exists to prevent.
+
+Tests assert that a pre-existing target survives, that unrelated files survive,
+that a file *resembling* a probe artefact but not created by the run also
+survives, and that two invocations never share a token.
+
+### A third defect, found by the full suite
+
+Compiling the probe embedded its source in a PowerShell command line. That
+worked while the probe was small and then failed with `WinError 206` (command
+line too long) once the source grew. The tests now compile by **path**, which
+has no such ceiling.
+
+### Corrected operator positive control
+
+With the attribute handled and the fixture owned, the operator run reports
+`OS_ALLOWED` for all six destructive operations, and readiness reports `READY`:
+
+```
+modify / append / delete / rename / replace / child-create : OS_ALLOWED
+destructive_scratch_dir : C:\dev\TharAI-EXP\subject_runtime\runtime
+cleanup_owned_copies_failed : 0
+pre-existing target survives : True
+RESULT: READY
+```
+
+A ReadOnly fixture is now reported as `staged_target_readonly=True` and its
+probe-owned copies are normalised, so the cause stays attributable to an
+attribute rather than being read as a permission result.
+
 ## Residual blockers
 
 1. `SeImpersonatePrivilege` absent → blocks `CreateProcessWithLogonW`.

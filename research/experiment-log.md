@@ -2334,3 +2334,90 @@ with 36 new tests. Host security 15 failed / 10 passed / 13 subtests, unchanged
 and still all NOT_TESTABLE.
 
 Unrelated untracked tooling and the pre-existing .gitignore edit remain untouched.
+
+## M016 follow-up 2: boundary harness corrected -- ReadOnly, not the ACL
+
+Milestone: M016 follow-up (no new milestone). Subject run as BABY_AI_TEST: NO.
+
+An operator dry run of the boundary harness returned OS_DENIED for modify,
+append, delete, rename and replace, for an account holding (F) on the target
+directory. A denial the operator cannot perform is not a working boundary; it is
+a broken fixture.
+
+Initial hypothesis, which was wrong: the destructive-operation copies were being
+created in the scratch directory subject_runtime\config, which is R-only for the
+subject, so the copies inherited config's ACL instead of the runtime subtree's.
+
+Investigation disproved it. destructive_scratch_dir already reported
+subject_runtime\runtime, and create_child_executable_beside_runtime, which writes
+into that same directory, returned OS_ALLOWED, so the directory was writable.
+icacls also reported the copy's ACL as correct, which it would not have done had
+the ACL been the problem.
+
+Actual cause: the fixture carried the ReadOnly DOS attribute. The probe's own
+modify_acl test sets that attribute and had not restored it. ReadOnly is not part
+of the ACL, so every ACL report stayed clean while every write failed, for the
+operator as well as the subject.
+
+The propagation mechanism was confirmed directly. File.Copy carries DOS
+attributes from source to copy, so a ReadOnly target yields ReadOnly copies:
+source readonly before copy True, copy readonly after copy True, operator write
+False, and after attrib -R the write succeeded. Clearing ReadOnly on the fixture
+made all five operations OS_ALLOWED.
+
+The general lesson is that ACL state and file attributes are separate security
+dimensions, and evidence that mixes them is unreliable in both directions: a
+sound ACL can appear to fail and a broken ACL can appear to pass. The probe now
+reports staged_target_attributes and staged_target_readonly independently, and
+the readiness gate refuses to run when the fixture is not writable.
+
+Retained as test isolation and hardening, not as the fix: destructive-operation
+copies are still created in the staged file's own directory rather than the
+scratch directory, because a copy used to test an object should inherit the ACL
+regime of the object under test. The probe reports destructive_scratch_dir so a
+reader can see where it worked.
+
+Fixture ownership is now by creation rather than filename prefix. Each invocation
+derives a run_token from process id and start time, names what it creates
+m016_copy_<token>_*, and cleans up only names carrying that token, reporting
+failures as cleanup_owned_copies_failed=N rather than swallowing them. The
+operator's m016_disposable_target.exe, any pre-existing artefact, and any model
+or config file are never deletion candidates. This replaced an earlier design in
+which a test used the operator's target as its own fixture and deleted it, leaving
+subject_runtime empty and the boundary test with no target. Tests now assert that
+the pre-existing target survives, that unrelated files survive, that a file
+resembling a probe artefact but not created by the run also survives, and that
+two invocations never share a token.
+
+A third defect surfaced by the full suite: the tests embedded the probe source in
+a PowerShell command line to compile it. That worked while the probe was small
+and then failed with WinError 206, command line too long. Compilation now passes
+the source by path.
+
+Corrected operator positive control reports OS_ALLOWED for all six destructive
+operations, destructive_scratch_dir pointing at subject_runtime\runtime,
+cleanup_owned_copies_failed=0, the pre-existing target surviving, and RESULT:
+READY. A ReadOnly fixture is reported as staged_target_readonly=True and its
+probe-owned copies are normalised, so the cause stays attributable to an
+attribute rather than being read as a permission result.
+
+The staging-tree emptiness assertions were relaxed in two places to permit the
+single empty disposable target, while continuing to forbid any real runtime, any
+model, any llama binary, and any leftover probe artefact. The target is an empty
+0-byte file carrying an .exe extension only so Windows applies the same ACL regime
+as the runtime slot; it is never executed and the probe contains no
+process-launch API.
+
+Regression: M015 boundary still STAGING_VERIFIED with no inherited Authenticated
+Users Modify and exact per-subtree rights; M005's 13 protected paths intact with
+5 digests readable; subject_runtime holds only the disposable target; no runtime,
+no model, no llama-server execution, no inference, no birth, no subject created,
+no ACL modified, no privilege granted, no credential stored. Full portable suite
+1910 passed / 2 warnings / 749 subtests. Host security 15 failed / 10 passed /
+13 subtests, unchanged and still all NOT_TESTABLE.
+
+No BABY_AI_TEST execution was performed and no runas command has been issued. The
+next gate is whether the corrected harness produces trustworthy operator
+OS_ALLOWED results while preserving fixture ownership and cleanup.
+
+Unrelated untracked tooling and the pre-existing .gitignore edit remain untouched.

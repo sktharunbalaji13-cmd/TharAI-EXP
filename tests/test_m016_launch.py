@@ -253,6 +253,29 @@ def test_probe_binary_report_does_not_claim_a_subject_run():
     assert info.get("status") in {"PROBE_BUILT", LaunchStatus.NOT_TESTABLE.value}
 
 
+def _compile_probe(exe: Path, source: str):
+    """Compile the probe with the C# compiler already present in PowerShell 5.1.
+
+    The source is written to a temporary .cs file and compiled by *path* rather
+    than embedded in the command line. Embedding it worked while the probe was
+    small, and then hit Windows' 32k command-line limit (WinError 206) once the
+    source grew -- a failure that looked like a test bug and was actually an
+    argument-passing design that had run out of room.
+    """
+    exe.parent.mkdir(parents=True, exist_ok=True)
+    cs = exe.with_suffix(".cs")
+    cs.write_text(source, encoding="utf-8")
+    script = (
+        "$ErrorActionPreference='Stop'; "
+        f"Add-Type -Path '{cs}' "
+        f"-OutputAssembly '{exe}' -OutputType ConsoleApplication"
+    )
+    built = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True, text=True, shell=False, timeout=300)
+    return built
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows token APIs")
 def test_probe_builds_and_correctly_identifies_the_operator():
     """Positive control: the probe must name the account it is actually running as.
@@ -261,17 +284,8 @@ def test_probe_builds_and_correctly_identifies_the_operator():
     BABY_AI_TEST either, so it fails the milestone's evidentiary requirement.
     """
     out = REPO.parent / "m016_probe_build"
-    out.mkdir(exist_ok=True)
     exe = out / "probe.exe"
-    source = PROBE_SOURCE.read_text(encoding="utf-8")
-    script = (
-        "$ErrorActionPreference='Stop'; "
-        "Add-Type -TypeDefinition @'\n" + source + "\n'@ "
-        f"-OutputAssembly '{exe}' -OutputType ConsoleApplication"
-    )
-    built = subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-        capture_output=True, text=True, shell=False, timeout=300)
+    built = _compile_probe(exe, PROBE_SOURCE.read_text(encoding="utf-8"))
     assert built.returncode == 0, built.stdout + built.stderr
     assert exe.is_file()
 
@@ -289,16 +303,19 @@ def test_probe_builds_and_correctly_identifies_the_operator():
 
 
 def _build_probe(exe: Path):
-    """Compile the probe source with the C# compiler already in PowerShell 5.1.
+    """Compile the probe with the C# compiler already in PowerShell 5.1.
 
-    No toolchain is installed for this milestone; Add-Type is what ships with the
-    shell. Returns the executable path, or skips if compilation is unavailable.
+    No toolchain is installed; Add-Type ships with the shell. The source is passed
+    by *path* rather than embedded in the command line -- the embedded form worked
+    while the probe was small and then failed with WinError 206 once it grew.
     """
     if not exe.is_file():
-        source = PROBE_SOURCE.read_text(encoding="utf-8")
+        exe.parent.mkdir(parents=True, exist_ok=True)
+        cs = exe.with_suffix(".cs")
+        cs.write_text(PROBE_SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
         script = (
             "$ErrorActionPreference='Stop'; "
-            "Add-Type -TypeDefinition @'\n" + source + "\n'@ "
+            f"Add-Type -Path '{cs}' "
             f"-OutputAssembly '{exe}' -OutputType ConsoleApplication"
         )
         built = subprocess.run(
@@ -318,7 +335,6 @@ def test_probe_reports_the_operator_as_allowed_by_the_os():
     every write must be allowed.
     """
     out = REPO.parent / "m016_probe_build"
-    out.mkdir(exist_ok=True)
     exe = _build_probe(out / "probe.exe")
     staged = REPO / "subject_runtime" / "runtime" / "m016_control.exe"
     scratch = REPO / "subject_runtime" / "config"

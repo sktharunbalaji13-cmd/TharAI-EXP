@@ -344,6 +344,19 @@ internal static class Probe
         finally { Marshal.FreeHGlobal(p); }
     }
 
+    /// A token identifying this invocation, used to name the files the probe owns.
+    ///
+    /// Ownership by creation, not by filename prefix: the cleanup sweep deletes
+    /// exactly the names this function generated, so a pre-existing staged runtime
+    /// or an artefact from another run cannot be caught by it. The process id
+    /// plus the start time makes the token unique per invocation while remaining
+    /// reproducible enough to trace back to the run that produced a file.
+    static string RunToken()
+    {
+        var me = System.Diagnostics.Process.GetCurrentProcess();
+        return me.Id + "x" + me.StartTime.Ticks.ToString("X");
+    }
+
     /// Positional argument at `index`, with "-" and blank treated as absent.
     ///
     /// The blank case exists because PowerShell removes empty arguments, so a
@@ -547,20 +560,96 @@ catch (Exception ex)
         RunGuarded("read_disposable_file", readFile, () => {
                 File.ReadAllText(readFile); bump();
             });
+        // The ACL-modification test. The ReadOnly attribute it sets MUST be restored
+        // before this function returns: the attribute is not part of the ACL, so
+        // icacls keeps reporting a clean boundary while every write to the file
+        // fails for everyone, operator included. Leaving it set made five
+        // operations return OS_DENIED for the operator, which looked like a
+        // working boundary and was in fact a corrupted fixture.
+        // Reported even when no path was supplied, so an absent option is visibly
+        // "not tested" rather than silently missing from the output. A harness
+        // reading only the operations it expects would otherwise conclude nothing
+        // was attempted.
+        FileAttributes original = FileAttributes.Normal;
+        bool captured = false;
         RunGuarded("modify_acl", aclTarget, () => {
-                File.SetAttributes(aclTarget, FileAttributes.ReadOnly); bump();
+                original = File.GetAttributes(aclTarget);
+                captured = true;
+                File.SetAttributes(aclTarget, FileAttributes.ReadOnly);
+                bump();
             });
+            if (captured)
+        {
+            try { File.SetAttributes(aclTarget, original); }
+            catch (Exception ex)
+            {
+                // Reported rather than swallowed: a fixture left read-only
+                // would silently invalidate every later run.
+                Console.WriteLine("probe=restore_acl_target_attributes result=ERROR " +
+                    ex.GetType().Name);
+            }
+        }
+
+        // The staged target's DOS/Windows attributes are recorded but NEVER changed.
+        // The ReadOnly bit is not part of the ACL, so a fixture carrying it makes
+        // every write fail for the operator too -- which reads as an ACL denial
+        // while the ACL is in fact perfect. Recording it lets a reader tell a
+        // permission problem from an attribute problem; correcting it is the
+        // harness's job, because only the harness created the fixture.
+        if (staged.Length > 0 && File.Exists(staged))
+        {
+            FileAttributes stagedAttrs = File.GetAttributes(staged);
+            Console.WriteLine("staged_target_attributes=" + stagedAttrs);
+            Console.WriteLine("staged_target_readonly=" +
+                ((stagedAttrs & FileAttributes.ReadOnly) != 0));
+        }
 
         // A private copy of the staged file for one destructive operation, made by the
-        // probe itself. The copy is created in the scratch directory -- which is
-        // inside subject_runtime and therefore carries the same ACL as the staged
-        // file -- and it must be created rather than assumed: asking the subject to
-        // modify a copy that was never made turns "the file is missing" into what
-        // looks like an ACL outcome, which is precisely the confusion this probe
-        // exists to avoid.
+        // probe itself -- it must be created rather than assumed, because asking
+        // the subject to modify a copy that was never made turns "the file is
+        // missing" into what looks like an ACL outcome.
+        //
+        // The copy goes in the STAGED FILE'S OWN DIRECTORY, not in the scratch
+        // directory. This matters more than it looks. The destructive operations
+        // exist to test the ACL that governs the staged runtime, and a copy
+        // placed elsewhere inherits *that other directory's* ACL instead. With
+        // scratch set to subject_runtime\config (R-only for the subject) the
+        // copies inherited the config ACL, so modify/append/delete/rename/replace
+        // came back OS_DENIED even for the operator who holds full control --
+        // proving the target was wrong, and meaning a later OS_DENIED from
+        // BABY_AI_TEST would have said nothing about the runtime subtree at all.
+        //
+        // No fallback: if the staged file has no resolvable directory the
+        // operations are reported NOT_TESTABLE rather than quietly retried
+        // somewhere else.
+        // The copy is created by this probe, so it is owned by this probe: the copy
+        // name carries an invocation-specific token, and only files this run
+        // created are deleted. A staged runtime, a model, or any pre-existing
+        // artefact in the tree is never touched.
+        string runToken = RunToken();
+        string ownedPrefix = "m016_copy_" + runToken + "_";
+
+        string stagedDir = staged.Length > 0 ? Path.GetDirectoryName(staged) : "";
+        if (stagedDir != null && !Directory.Exists(stagedDir)) stagedDir = "";
+        Console.WriteLine("run_token=" + runToken);
+        Console.WriteLine("destructive_scratch_dir=" +
+            (stagedDir.Length > 0 ? stagedDir : "UNRESOLVED"));
+        Console.WriteLine("owned_artifact_prefix=" + ownedPrefix);
+
         Func<string, string> WithSuffix = suffix => {
-            string copy = Path.Combine(scratch, "target" + suffix);
+            string copy = Path.Combine(stagedDir, ownedPrefix + suffix.TrimStart('.'));
             File.Copy(staged, copy, true);
+            // File.Copy propagates the source's DOS attributes, so a ReadOnly
+            // source yields ReadOnly copies -- and every write to those copies
+            // then fails for the operator as well, which looks exactly like a
+            // working ACL boundary. The copy is created by this probe, so the
+            // probe may normalise it. The staged source is left untouched.
+            FileAttributes copyAttrs = File.GetAttributes(copy);
+            if ((copyAttrs & FileAttributes.ReadOnly) != 0)
+            {
+                File.SetAttributes(copy, copyAttrs & ~FileAttributes.ReadOnly);
+                Console.WriteLine("probe=clear_copy_readonly result=OS_ALLOWED file=" + copy);
+            }
             return copy;
         };
 
@@ -590,29 +679,34 @@ catch (Exception ex)
                 // indistinguishable from "the delete already removed it".
                 Run("delete_staged_executable", () => { Nuke(WithSuffix(".del")); bump(); });
                 Run("rename_staged_executable", () => {
-                    // Distinct source and destination names: reusing the source
-                    // name hits winerror 183 (name exists), which is a collision
-                    // rather than a denial of rename.
+                    // Both ends stay inside the staged file's own directory. A
+                    // rename that crosses into another directory is a different
+                    // test -- it would be governed by two ACLs, not the one the
+                    // runtime subtree is supposed to enforce.
+                    // Distinct names: reusing the source name hits winerror 183,
+                    // which is a collision rather than a denial of rename.
                     string source = WithSuffix(".mvsrc");
-                    string target = Path.Combine(scratch, "target.mvdst");
+                    string target = Path.Combine(stagedDir, ownedPrefix + "mvdst");
                     if (File.Exists(target)) File.Delete(target);
                     File.Move(source, target);
                     File.Delete(target);
                     bump();
                 });
                 Run("replace_staged_executable", () => {
-                    string tmp = Path.Combine(scratch, "replacement.exe");
+                    // The replacement is created in the same directory, so the
+                    // only thing under test is whether the subject can overwrite
+                    // an existing file there.
+                    string tmp = Path.Combine(stagedDir, ownedPrefix + "replacement");
                     Touch(tmp);
-                    Replace(tmp, WithSuffix(".rep"));
+                    Replace(tmp, WithSuffix("rep"));
                     bump();
                 });
-                // Created beside the staged runtime, not in the scratch directory, because
-                // beside-the-runtime is the case worth testing: the runtime
-                // directory must be as read-only to the subject as the file in it.
-                string child = Path.Combine(Path.GetDirectoryName(staged) ?? scratch, "child.exe");
+                // Created beside the staged runtime for the same reason: the
+                // runtime directory must be as read-only to the subject as the
+                // file inside it.
+                string child = Path.Combine(stagedDir, ownedPrefix + "child");
                 Run("create_child_executable_beside_runtime", () => {
                     Touch(child); bump();
-                    try { File.Delete(child); } catch (Exception) { }
                 });
             }
             else
@@ -650,18 +744,43 @@ catch (Exception ex)
             Run("workspace_delete", () => { Nuke(wf); bump(); });
         }
 
-        // Remove every artefact this run created. A boundary probe that leaves copies
-        // of the staged runtime lying in subject_runtime would contaminate the
-        // next run and, worse, would have left files in a tree the milestone
-        // describes as holding nothing.
-        foreach (string leftover in new[] {
-            "p.txt", "child.exe", "replacement.exe",
-            "target.mod", "target.app", "target.del", "target.ren",
-            "target.mvsrc", "target.mvdst", "target.rep" })
+        // Delete only what this invocation created. The names come from ownedPrefix,
+        // which embeds this process's run token, so the sweep cannot match a
+        // staged runtime, a model, an artefact from an earlier run, or anything an
+        // operator placed in the tree. Prefix matching alone is not trusted: the
+        // probe first enumerates and confirms the token is in the name.
+        //
+        // Cleanup failures are reported rather than swallowed. A copy left behind
+        // would contaminate the next run, and a silent failure would make the next
+        // run's entry counts wrong for reasons nobody could see.
+        int cleanupFailed = 0;
+        if (stagedDir.Length > 0)
         {
-            try { if (File.Exists(Path.Combine(scratch, leftover))) File.Delete(Path.Combine(scratch, leftover)); }
-            catch (Exception) { /* cleanup is best-effort; a leftover is reported by the inventory */ }
+            foreach (string leftover in Directory.GetFiles(stagedDir, ownedPrefix + "*"))
+            {
+                if (Path.GetFileName(leftover).Contains(runToken))
+                {
+                    try
+                    {
+                        FileAttributes attrs = File.GetAttributes(leftover);
+                        if ((attrs & FileAttributes.ReadOnly) != 0)
+                            File.SetAttributes(leftover, attrs & ~FileAttributes.ReadOnly);
+                        File.Delete(leftover);
+                    }
+                    catch (Exception ex)
+                    {
+                        cleanupFailed++;
+                        Console.WriteLine("probe=cleanup_owned_copy result=ERROR file=" +
+                            Path.GetFileName(leftover) + " " + ex.GetType().Name);
+                    }
+                }
+            }
         }
+        Console.WriteLine("cleanup_owned_copies_failed=" + cleanupFailed);
+
+        // p.txt belongs to the scratch directory's own create test.
+        try { if (scratch.Length > 0 && File.Exists(Path.Combine(scratch, "p.txt"))) File.Delete(Path.Combine(scratch, "p.txt")); }
+        catch (Exception) { }
         try { if (Directory.Exists(Path.Combine(scratch, "childdir"))) Directory.Delete(Path.Combine(scratch, "childdir")); }
         catch (Exception) { }
         string workspaceFile = Path.Combine(workspace, "probe_workspace.txt");
