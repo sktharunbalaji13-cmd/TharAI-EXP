@@ -344,6 +344,23 @@ internal static class Probe
         finally { Marshal.FreeHGlobal(p); }
     }
 
+    /// Whether a path lies inside the staging directory.
+    ///
+    /// Reported rather than enforced, because the interesting fact is when a
+    /// boundary test was aimed somewhere else entirely. Silently rewriting the
+    /// target would hide the misconfiguration; refusing it outright would be a
+    /// behaviour change beyond this probe's remit.
+    static bool IsUnder(string path, string root)
+    {
+        if (path == null || path.Length == 0 || root == null || root.Length == 0)
+            return false;
+        string a = Path.GetFullPath(path).TrimEnd('\\');
+        string b = Path.GetFullPath(root).TrimEnd('\\');
+        return a.Length > b.Length &&
+               a.StartsWith(b, StringComparison.OrdinalIgnoreCase) &&
+               a[b.Length] == '\\';
+    }
+
     /// Whether an exception means the OS refused access.
     ///
     /// .NET surfaces a denial as `UnauthorizedAccessException` from the
@@ -560,6 +577,22 @@ internal static class Probe
         string staged = Arg(args, 1);
         string protectedDir = Arg(args, 2);
         string workspace = Arg(args, 3);
+        string stagedTree = Option(args, "--staging-root=");
+
+        // The staging root drives the destructive-copy location and the
+        // read-inside-staging report. It falls back to the staged file's own
+        // directory only when no explicit root is given, and that substitution is
+        // announced rather than made silently.
+        if (stagedTree.Length == 0 && staged.Length > 0)
+        {
+            string guess = Path.GetDirectoryName(staged);
+            if (guess != null && Directory.Exists(guess))
+            {
+                stagedTree = guess;
+                Console.WriteLine("staging_root_source=DERIVED_FROM_STAGED_FILE");
+            }
+        }
+        Console.WriteLine("staging_root=" + (stagedTree.Length > 0 ? stagedTree : "<none>"));
 
         string traverseDir = Option(args, "--traverse=");
         string enumRuntime = Option(args, "--enumerate-runtime=");
@@ -567,6 +600,7 @@ internal static class Probe
         string enumConfig = Option(args, "--enumerate-config=");
         string readFile = Option(args, "--read-file=");
         string aclTarget = Option(args, "--acl-target=");
+        string deleteFixture = Option(args, "--delete-fixture=");
 
         int allowed = 0;
         Action bump = delegate { allowed++; };
@@ -583,13 +617,17 @@ internal static class Probe
         Enumerate("enumerate_runtime", enumRuntime);
         Enumerate("enumerate_model", enumModel);
         Enumerate("enumerate_config", enumConfig);
-        // The read test. The exact target is echoed before the attempt and again after,
-        // so a reader can confirm which object produced the result rather than
-        // inferring it from the harness configuration. A read that succeeds on a
-        // file outside the staging tree is a true observation of *that* file and
-        // says nothing about the staging boundary -- which is why the target is
-        // reported rather than assumed.
+        // The read test. The exact target is echoed before the attempt, and the byte count
+        // after, so a reader can confirm which object produced the result.
+        //
+        // The staging root is echoed too, because a read of a file OUTSIDE it is a
+        // true observation of that file and says nothing about the boundary. The
+        // first subject run read a file in the writable baby_workspace and reported
+        // OS_ALLOWED directly beside thirteen staging denials, with nothing in the
+        // output to distinguish the two.
         Console.WriteLine("read_file_target=" + (readFile.Length > 0 ? readFile : "<none>"));
+        Console.WriteLine("read_file_in_staging=" +
+                (IsUnder(readFile, stagedTree) || IsUnder(readFile, staged)));
         RunGuarded("read_disposable_file", readFile, () => {
                 long bytes = new FileInfo(readFile).Length;
                 using (var stream = File.OpenRead(readFile))
@@ -677,8 +715,11 @@ internal static class Probe
         string runToken = RunToken();
         string ownedPrefix = "m016_copy_" + runToken + "_";
 
-        string stagedDir = staged.Length > 0 ? Path.GetDirectoryName(staged) : "";
-        if (stagedDir != null && !Directory.Exists(stagedDir)) stagedDir = "";
+        // The destructive-copy directory is the staging root when supplied, and only
+        // otherwise the staged file's own directory. Either way it must exist.
+        string stagedDir = stagedTree.Length > 0 ? stagedTree
+            : (staged.Length > 0 ? Path.GetDirectoryName(staged) : "");
+        if (stagedDir == null || !Directory.Exists(stagedDir)) stagedDir = "";
         Console.WriteLine("run_token=" + runToken);
         Console.WriteLine("destructive_scratch_dir=" +
             (stagedDir.Length > 0 ? stagedDir : "UNRESOLVED"));
@@ -773,36 +814,49 @@ internal static class Probe
             // turned "the subject could not create a directory" into "the subject
             // could delete a directory", which is the opposite of what happened.
             string childCreate = Path.Combine(scratch, "m016_child_create_dir");
-            string childDelete = Path.Combine(scratch, "m016_child_delete_dir");
 
             RunGuarded("create_child_directory", scratch, () => {
                 Directory.CreateDirectory(childCreate); bump();
             });
+            Console.WriteLine("create_child_directory_target=" + childCreate);
 
-            // The delete fixture is created through the SAME guarded path as the
-            // create target. An earlier version created it with an unguarded Run,
-            // so when the scratch directory was unreachable the create was reported
-            // NOT_TESTABLE while the unguarded creation still succeeded by a
-            // different route -- which is how a delete could report OS_ALLOWED in a
-            // run where nothing could be written.
-            RunGuarded("prepare_delete_child_fixture", scratch, () => {
-                Directory.CreateDirectory(childDelete); bump();
-            });
-            bool deleteFixtureCreated = Directory.Exists(childDelete);
-            Console.WriteLine("delete_child_fixture_present=" + deleteFixtureCreated);
-            Console.WriteLine("delete_child_fixture_path=" + childDelete);
+            // The delete target is a directory the OPERATOR created beforehand. The
+            // probe never creates it, because a probe that creates the thing it is
+            // about to delete cannot distinguish "the subject deleted it" from "the
+            // subject created it, so of course it was there".
+            //
+            // Two earlier versions were wrong in opposite directions. One shared a
+            // single name and guarded the delete behind Directory.Exists, so a
+            // refused creation produced OS_ALLOWED for a delete that never happened.
+            // The next one created the fixture itself through the same guarded path,
+            // which meant the delete target could appear during the very run meant
+            // to test deletion of a pre-existing object.
+            string childDelete = deleteFixture;
+            bool deletePreexisted = childDelete.Length > 0 && Directory.Exists(childDelete);
+            Console.WriteLine("delete_child_directory_target=" +
+                (childDelete.Length > 0 ? childDelete : "<none>"));
+            Console.WriteLine("delete_child_directory_target_preexisted=" + deletePreexisted);
 
-            if (deleteFixtureCreated)
+            if (childDelete.Length == 0)
             {
-                RunGuarded("delete_child_directory", childDelete, () => {
-                    Directory.Delete(childDelete); bump();
-                });
+                Console.WriteLine("probe=delete_child_directory result=NOT_TESTABLE " +
+                    "reason=no_delete_fixture_supplied; pass --delete-fixture=<dir>");
+            }
+            else if (!deletePreexisted)
+            {
+                Console.WriteLine("probe=delete_child_directory result=NOT_TESTABLE " +
+                    "reason=delete_fixture_absent; the operator must pre-create it");
             }
             else
             {
-                Console.WriteLine("probe=delete_child_directory result=NOT_TESTABLE " +
-                    "reason=fixture_absent; the probe could not create a directory " +
-                    "to delete, so no deletion was attempted");
+                RunGuarded("delete_child_directory", childDelete, () => {
+                    // Recursive, because the operator's fixture may hold a sentinel
+                    // file. A non-recursive delete of a non-empty directory returns
+                    // winerror 145 (directory not empty), which is a PATH_ERROR about
+                    // the fixture's contents and says nothing about whether the
+                    // account may delete the directory itself.
+                    Directory.Delete(childDelete, true); bump();
+                });
             }
             if (protectedDir.Length > 0)
             {

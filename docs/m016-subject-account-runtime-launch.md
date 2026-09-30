@@ -488,6 +488,97 @@ The read test *inside* `subject_runtime`, a delete test with a fixture that
 actually exists, and a completed cleanup report. Until those run, the boundary is
 constrained but not fully characterised.
 
+## Final harness correction: the three remaining blockers
+
+This closes the three gaps left by the first subject run. It does **not** rerun the
+subject account, and it does not retroactively upgrade what that run proved.
+
+### 1. The read test now targets the boundary
+
+The read test pointed at `baby_workspace\m016_probe.exe` — the intentionally
+writable experimentation area. `OS_ALLOWED` there was true and irrelevant to
+`subject_runtime`.
+
+The read target is now an operator-created fixture inside
+`subject_runtime\runtime\`, and the probe reports both the path and whether it
+lies inside the staging root:
+
+```
+read_file_target=C:\dev\TharAI-EXP\subject_runtime\runtime\m016_read_fixture.exe
+read_file_in_staging=True
+read_file_bytes_observed=26
+```
+
+`read_file_in_staging` is a computed comparison against the staging root, not an
+assertion. A read aimed elsewhere is still permitted — an operator may
+legitimately check the workspace — but it is labelled, so a workspace read can
+never again sit beside staging denials and be read as staging evidence. `IsUnder`
+requires a path separator after the root, so `subject_runtime_evil` does not
+count as inside `subject_runtime`.
+
+A read target that does not exist reports `NOT_TESTABLE`, never `OS_ALLOWED`.
+
+### 2. The delete test uses an operator-owned, pre-existing fixture
+
+Three successive versions of this operation were wrong:
+
+1. One shared name, with the delete behind `if (Directory.Exists(...))` inside the
+   counting lambda — a refused creation produced `OS_ALLOWED` for a delete that
+   never happened.
+2. The probe then created its own delete fixture through the same guarded path —
+   which meant the target could *appear during the very run* meant to test
+   deleting a pre-existing object.
+3. A non-recursive `Directory.Delete` against a fixture holding a sentinel file
+   returned `winerror 145` (directory not empty), a `PATH_ERROR` about the
+   fixture's contents that says nothing about whether the account may delete the
+   directory.
+
+The probe now **never creates** the directory it intends to delete. The operator
+supplies it via `--delete-fixture`, and the probe reports what it found:
+
+```
+create_child_directory_target=...\config\m016_child_create_dir
+delete_child_directory_target=...\config\m016_delete_target
+delete_child_directory_target_preexisted=True
+probe=delete_child_directory result=OS_ALLOWED
+```
+
+Absent fixture → `NOT_TESTABLE reason=delete_fixture_absent`. No fixture supplied
+→ `NOT_TESTABLE reason=no_delete_fixture_supplied`. Neither is ever `OS_ALLOWED`,
+and no skip is ever counted as a success.
+
+### 3. Cleanup is reported, not required, from the subject side
+
+The subject cannot list its own scratch directory, and that is the boundary
+working. No cleanup privilege is granted.
+
+```
+cleanup_state=CLEANUP_NOT_PERMITTED
+cleanup_operator_followup=m016_copy_<run_token>_*
+cleanup_owned_copies_removed=0
+cleanup_owned_copies_failed=0
+```
+
+`CLEAN` is reported when the account could enumerate and clean; `CLEANUP_NOT_PERMITTED`
+when it could not; `PARTIAL` when some deletions failed. The prefix names exactly
+what an operator should remove. Ownership is unchanged — every artefact name
+embeds the per-invocation `run_token`.
+
+### Operator positive control
+
+Every intended operation genuinely executes: **18 `OS_ALLOWED`, zero
+`OS_DENIED`, zero `NOT_TESTABLE`**, `delete_child_directory_target_preexisted=True`,
+`read_file_in_staging=True`, `cleanup_state=CLEAN`, no unhandled exception.
+
+That is the evidence that a following subject run's `OS_DENIED` results would be
+about the boundary rather than about an unexercisable operation.
+
+### What is still not claimed
+
+`SUBJECT_BOUNDARY_STATUS` remains **`PARTIALLY_VERIFIED`**. The three blockers are
+now *resolved in the harness*; they are only *observed* once the subject run
+happens. Nothing here upgrades the previous run's evidence.
+
 ## Residual blockers
 
 1. `SeImpersonatePrivilege` absent → blocks `CreateProcessWithLogonW`.

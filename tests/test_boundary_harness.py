@@ -13,6 +13,7 @@ subject-side boundary test has not yet been run and is asserted only as
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 import uuid
@@ -323,19 +324,34 @@ def harness_fixture():
 
 
 def _run_probe(staged: Path, **overrides):
-    argv = build_probe_argv(
-        scratch=REPO / "subject_runtime" / "config",
-        staged=staged,
-        workspace=REPO / "baby_workspace",
-        **{**dict(traverse=REPO / "subject_runtime",
-                  enumerate_runtime=REPO / "subject_runtime" / "runtime",
-                  enumerate_model=REPO / "subject_runtime" / "model",
-                  enumerate_config=REPO / "subject_runtime" / "config"), **overrides},
-    )
-    exe = _build_probe(PROBE_EXE)
-    run = subprocess.run([str(exe), *argv], capture_output=True, text=True,
-                         shell=False, timeout=180)
-    return parse_probe_output(run.stdout), run.stdout
+    """Run the probe, supplying an operator-owned delete fixture by default.
+
+    The delete-directory operation requires a fixture the probe does not create,
+    so a run that expects it to execute must pass one. Tests that deliberately omit
+    it pass ``delete_fixture=None`` explicitly.
+    """
+    delete_target = REPO / "subject_runtime" / "config" / "m016_harness_delete_target"
+    if "delete_fixture" not in overrides:
+        shutil.rmtree(delete_target, ignore_errors=True)
+        delete_target.mkdir(parents=True, exist_ok=True)
+        overrides["delete_fixture"] = delete_target
+    try:
+        argv = build_probe_argv(
+            scratch=REPO / "subject_runtime" / "config",
+            staged=staged,
+            workspace=REPO / "baby_workspace",
+            **{**dict(traverse=REPO / "subject_runtime",
+                      enumerate_runtime=REPO / "subject_runtime" / "runtime",
+                      enumerate_model=REPO / "subject_runtime" / "model",
+                      enumerate_config=REPO / "subject_runtime" / "config"),
+               **overrides},
+        )
+        exe = _build_probe(PROBE_EXE)
+        run = subprocess.run([str(exe), *argv], capture_output=True, text=True,
+                             shell=False, timeout=180)
+        return parse_probe_output(run.stdout), run.stdout
+    finally:
+        shutil.rmtree(delete_target, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -614,7 +630,7 @@ def test_missing_paths_never_produce_a_denial():
     # boundary under test, so they are excluded from the operation classification.
     cleanup_ops = {"cleanup_p_txt", "cleanup_childdir", "cleanup_owned_copy",
                    "cleanup_enumerate_owned_copies", "restore_acl_target_attributes",
-                   "staged_executable_operations", "prepare_delete_child_fixture"}
+                   "staged_executable_operations"}
 
     for finding in parsed["findings"]:
         if finding["operation"] in cleanup_ops:
@@ -626,7 +642,11 @@ def test_missing_paths_never_produce_a_denial():
         # explanation, so it is not routed through the RunGuarded reachability
         # check and is legitimately reported as having consulted its target.
         if finding["operation"] == "delete_child_directory":
-            assert "fixture_absent" in finding["detail"], finding
+            # Carries its own explicit reason rather than going through the
+            # RunGuarded reachability check, so it is legitimately reported as
+            # having consulted its own fixture decision.
+            assert ("fixture_absent" in finding["detail"]
+                    or "no_delete_fixture_supplied" in finding["detail"]), finding
             continue
         assert finding["reached_target"] is False, finding
 

@@ -88,13 +88,13 @@ def run_probe(probe: Path, **kw) -> tuple[dict, str]:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_probe_echoes_the_read_target(probe: Path, owned_fixture: Path):
-    """A read result is meaningless without the path that produced it.
+def test_read_target_can_be_the_writable_workspace(probe: Path,
+                                                   owned_fixture: Path):
+    """The harness permits the workspace target, but labels it as outside.
 
-    The first subject run reported read_disposable_file=OS_ALLOWED against a file
-    in the writable workspace while every staging operation was denied. Nothing in
-    the output said so, and the result was easy to read as evidence that the
-    subject could read inside the boundary.
+    The point is not to forbid it -- an operator may legitimately want to check the
+    workspace -- but to make the output say which regime the result belongs to, so
+    a workspace read is never read as staging evidence.
     """
     parsed, raw = run_probe(
         probe,
@@ -102,10 +102,63 @@ def test_probe_echoes_the_read_target(probe: Path, owned_fixture: Path):
         staged=owned_fixture,
         workspace=REPO / "baby_workspace",
         read_file=REPO / "baby_workspace" / "m016_probe.exe",
+        staging_root=STAGING / "runtime",
     )
+    assert "read_file_in_staging=False" in raw, (
+        "a read outside the staging root must be reported as such")
     echo = [l for l in raw.splitlines() if l.startswith("read_file_target=")]
-    assert echo, "the probe did not echo its read target"
-    assert "baby_workspace" in echo[0], echo[0]
+    assert echo and "baby_workspace" in echo[0], echo
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
+def test_read_target_inside_subject_runtime_is_flagged(probe: Path,
+                                                       owned_fixture: Path):
+    """The boundary read, with the staging root supplied explicitly."""
+    read_fixture = STAGING / "runtime" / "m016_read_fixture_check.exe"
+    read_fixture.write_bytes(b"payload\n")
+    try:
+        parsed, raw = run_probe(
+            probe,
+            scratch=STAGING / "config",
+            staged=owned_fixture,
+            workspace=REPO / "baby_workspace",
+            read_file=read_fixture,
+            staging_root=STAGING / "runtime",
+        )
+        assert "read_file_in_staging=True" in raw, raw[-600:]
+        findings = {f["operation"]: f for f in parsed["findings"]}
+        assert findings["read_disposable_file"]["outcome"] == \
+            Outcome.OS_ALLOWED.value
+    finally:
+        read_fixture.unlink(missing_ok=True)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
+def test_missing_read_target_is_not_testable(probe: Path, owned_fixture: Path):
+    """A read that cannot reach its target must not claim success."""
+    parsed, raw = run_probe(
+        probe,
+        scratch=STAGING / "config",
+        staged=owned_fixture,
+        workspace=REPO / "baby_workspace",
+        read_file=STAGING / "runtime" / "m016_no_such_read_file.exe",
+        staging_root=STAGING / "runtime",
+    )
+    findings = {f["operation"]: f for f in parsed["findings"]}
+    read = findings["read_disposable_file"]
+    assert read["outcome"] != Outcome.OS_ALLOWED.value, read
+    assert read["outcome"] in {
+        Outcome.NOT_TESTABLE.value, Outcome.PATH_ERROR.value}, read
+
+
+def test_read_inside_staging_helper_is_not_a_prefix_match():
+    """A sibling directory sharing a name prefix must not count as inside."""
+    source = PROBE_SOURCE.read_text(encoding="utf-8")
+    assert "static bool IsUnder(string path, string root)" in source
+    # The separator check is what distinguishes a real subdirectory from
+    # "subject_runtime_evil", which a plain StartsWith would accept.
+    assert "a[b.Length] == '\\\\'" in source or 'a[b.Length]' in source, (
+        "IsUnder must require a separator after the root, not merely a prefix match")
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
@@ -204,27 +257,129 @@ def test_probe_source_has_no_silent_exists_guard_in_the_delete(probe: Path):
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
 def test_child_create_and_delete_use_distinct_fixtures(probe: Path,
                                                        owned_fixture: Path):
-    """Two names, so the create cannot consume the delete's target."""
+    """Two fixtures, and the delete fixture is the OPERATOR's, not the probe's."""
     source = PROBE_SOURCE.read_text(encoding="utf-8")
     assert "m016_child_create_dir" in source
-    assert "m016_child_delete_dir" in source
-    assert 'delete_child_fixture_present=' in source, (
-        "the probe must state whether its delete fixture was created")
+    assert "--delete-fixture=" in source, (
+        "the delete target must be supplied by the operator")
+    assert 'delete_child_directory_target_preexisted=' in source, (
+        "the probe must state whether the delete fixture existed beforehand")
+    assert 'create_child_directory_target=' in source
+    assert 'delete_child_directory_target=' in source
+
+
+def test_delete_fixture_is_never_created_by_the_probe(probe: Path,
+                                                       owned_fixture: Path):
+    """A probe that creates the directory it is about to delete proves nothing."""
+    source = PROBE_SOURCE.read_text(encoding="utf-8")
+    # The only Directory.CreateDirectory for the delete path must be absent: the
+    # delete target arrives via --delete-fixture and is only ever inspected.
+    assert "prepare_delete_child_fixture" not in source, (
+        "the probe must not create the fixture it intends to delete")
+    delete_block = source[source.find("delete_child_directory_target="):]
+    assert "Directory.CreateDirectory" not in delete_block.split(
+        "create_child_directory_target=")[0], (
+        "the delete branch must not create its own target")
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_delete_child_directory_is_allowed_when_its_fixture_exists(
-        probe: Path, owned_fixture: Path):
-    """The positive control for the fixed operation."""
-    parsed, _raw = run_probe(
+def test_absent_delete_fixture_is_not_testable(probe: Path, owned_fixture: Path):
+    """No fixture means no test, and it must say so."""
+    parsed, raw = run_probe(
+        probe,
+        scratch=STAGING / "config",
+        staged=owned_fixture,
+        workspace=REPO / "baby_workspace",
+        delete_fixture=STAGING / "config" / "m016_absent_delete_target",
+    )
+    findings = {f["operation"]: f for f in parsed["findings"]}
+    delete = findings.get("delete_child_directory")
+    assert delete is not None, "delete_child_directory was not reported at all"
+    assert delete["outcome"] == Outcome.NOT_TESTABLE.value
+    assert "delete_fixture_absent" in delete["detail"], delete
+    assert "delete_child_directory_target_preexisted=False" in raw
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
+def test_no_delete_fixture_supplied_is_not_testable(probe: Path,
+                                                    owned_fixture: Path):
+    """Omitting the option must be reported, not silently treated as a pass."""
+    parsed, raw = run_probe(
         probe,
         scratch=STAGING / "config",
         staged=owned_fixture,
         workspace=REPO / "baby_workspace",
     )
     findings = {f["operation"]: f for f in parsed["findings"]}
-    assert findings["create_child_directory"]["outcome"] == Outcome.OS_ALLOWED.value
-    assert findings["delete_child_directory"]["outcome"] == Outcome.OS_ALLOWED.value
+    delete = findings["delete_child_directory"]
+    assert delete["outcome"] == Outcome.NOT_TESTABLE.value
+    assert "no_delete_fixture_supplied" in delete["detail"], delete
+    assert "delete_child_directory_target=<none>" in raw
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
+def test_preexisting_delete_fixture_is_deleted(probe: Path, owned_fixture: Path):
+    """The positive control: a real directory really goes away."""
+    import shutil
+    target = STAGING / "config" / "m016_delete_fixture_control"
+    shutil.rmtree(target, ignore_errors=True)
+    target.mkdir(parents=True)
+    (target / "sentinel.txt").write_bytes(b"x")
+    assert target.is_dir(), "precondition"
+    try:
+        parsed, raw = run_probe(
+            probe,
+            scratch=STAGING / "config",
+            staged=owned_fixture,
+            workspace=REPO / "baby_workspace",
+            delete_fixture=target,
+        )
+        findings = {f["operation"]: f for f in parsed["findings"]}
+        assert "delete_child_directory_target_preexisted=True" in raw
+        assert findings["delete_child_directory"]["outcome"] == \
+            Outcome.OS_ALLOWED.value, findings["delete_child_directory"]
+        assert not target.exists(), "the fixture should have been removed"
+    finally:
+        shutil.rmtree(target, ignore_errors=True)
+
+
+def test_delete_uses_a_recursive_delete(probe: Path):
+    """A non-recursive delete of a non-empty fixture returns winerror 145.
+
+    That is a PATH_ERROR about the fixture's contents and says nothing about
+    whether the account may delete the directory -- it was the first thing the
+    operator control caught.
+    """
+    source = PROBE_SOURCE.read_text(encoding="utf-8")
+    assert "Directory.Delete(childDelete, true)" in source, (
+        "the delete must be recursive so a fixture holding a sentinel file can be "
+        "removed, and the result reflects the delete right rather than the "
+        "fixture's emptiness")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
+def test_delete_child_directory_is_allowed_when_its_fixture_exists(
+        probe: Path, owned_fixture: Path):
+    """The positive control for the fixed operation."""
+    import shutil
+    target = STAGING / "config" / "m016_delete_positive_control"
+    shutil.rmtree(target, ignore_errors=True)
+    target.mkdir(parents=True)
+    try:
+        parsed, raw = run_probe(
+            probe,
+            scratch=STAGING / "config",
+            staged=owned_fixture,
+            workspace=REPO / "baby_workspace",
+            delete_fixture=target,
+        )
+        findings = {f["operation"]: f for f in parsed["findings"]}
+        assert findings["create_child_directory"]["outcome"] == \
+            Outcome.OS_ALLOWED.value
+        assert findings["delete_child_directory"]["outcome"] == \
+            Outcome.OS_ALLOWED.value, findings["delete_child_directory"]
+    finally:
+        shutil.rmtree(target, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -397,9 +552,20 @@ def test_m005_evidence_intact():
 
 
 def test_no_runtime_or_model_staged():
+    """Empty disposable fixtures only -- no program, no model.
+
+    A fixture may hold bytes (the read fixture carries payload so a byte count is
+    observable), so size is no longer the test; the name is. Everything permitted
+    here is an m016_ artefact created and removed by the harness or the operator.
+    """
     assert not list(REPO.rglob("*.gguf"))
     for item in (STAGING / "runtime").iterdir():
-        assert item.stat().st_size == 0 or item.name.startswith("m016_"), item
+        assert item.name.startswith("m016_"), \
+            f"unexpected artefact in the staging tree: {item.name}"
+    for name in ("model", "config"):
+        for item in (STAGING / name).iterdir():
+            assert item.name.startswith("m016_"), \
+                f"unexpected artefact in {name}: {item.name}"
 
 
 def test_no_birth():

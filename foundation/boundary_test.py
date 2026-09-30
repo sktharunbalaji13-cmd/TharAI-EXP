@@ -188,6 +188,8 @@ def build_probe_argv(
     enumerate_config: str | Path | None = None,
     read_file: str | Path | None = None,
     acl_target: str | Path | None = None,
+    staging_root: str | Path | None = None,
+    delete_fixture: str | Path | None = None,
 ) -> list[str]:
     """The exact argv for one probe run, using absolute paths.
 
@@ -201,12 +203,14 @@ def build_probe_argv(
 
     argv = [slot(scratch), slot(staged), slot(protected), slot(workspace)]
     for name, value in (
+        ("--staging-root", staging_root),
         ("--traverse", traverse),
         ("--enumerate-runtime", enumerate_runtime),
         ("--enumerate-model", enumerate_model),
         ("--enumerate-config", enumerate_config),
         ("--read-file", read_file),
         ("--acl-target", acl_target),
+        ("--delete-fixture", delete_fixture),
     ):
         if value is not None:
             argv.append(f"{name}={value}")

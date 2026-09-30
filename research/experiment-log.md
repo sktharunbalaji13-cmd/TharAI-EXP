@@ -2499,3 +2499,66 @@ need to establish: the read test inside subject_runtime, a delete test with a fi
 that exists, and a completed cleanup report.
 
 Unrelated untracked tooling and the pre-existing .gitignore edit remain untouched.
+
+## M016 final boundary-harness correction: the three blockers resolved in the harness
+
+Current commit at start: 2700f16. Status remains SUBJECT_BOUNDARY_STATUS =
+PARTIALLY_VERIFIED. No BABY_AI_TEST run was performed in this task.
+
+This closes the three gaps left by the first subject run. It does not rerun the
+subject account and does not retroactively upgrade what that run proved.
+
+Read test. It pointed at baby_workspace\m016_probe.exe, the intentionally writable
+experimentation area, so OS_ALLOWED there was true and irrelevant to
+subject_runtime. The read target is now an operator-created fixture inside
+subject_runtime\runtime, and the probe reports both the path and whether it lies
+inside the staging root: read_file_target=, read_file_in_staging=True, and
+read_file_bytes_observed=. read_file_in_staging is computed against the staging
+root rather than asserted, so a read aimed elsewhere is still permitted but is
+labelled, and a workspace read can no longer sit beside staging denials and be
+read as staging evidence. IsUnder requires a separator after the root so
+subject_runtime_evil does not count as inside subject_runtime. A read target that
+does not exist reports NOT_TESTABLE, never OS_ALLOWED.
+
+Delete test. Three successive versions were wrong. One shared a name with the
+delete behind if (Directory.Exists(...)) inside the counting lambda, so a refused
+creation produced OS_ALLOWED for a delete that never happened. The next created
+its own delete fixture through the same guarded path, meaning the target could
+appear during the very run meant to test deleting a pre-existing object. The third
+used a non-recursive Directory.Delete against a fixture holding a sentinel file
+and got winerror 145, directory not empty, which is a PATH_ERROR about the
+fixture's contents and says nothing about whether the account may delete the
+directory. The probe now never creates the directory it intends to delete; the
+operator supplies it via --delete-fixture and the probe reports
+create_child_directory_target=, delete_child_directory_target= and
+delete_child_directory_target_preexisted=. Absent fixture gives NOT_TESTABLE
+reason=delete_fixture_absent, no fixture supplied gives NOT_TESTABLE
+reason=no_delete_fixture_supplied, and neither is ever OS_ALLOWED.
+
+Cleanup. The subject cannot list its own scratch directory and no cleanup privilege
+is granted. The probe reports cleanup_state=CLEAN, CLEANUP_NOT_PERMITTED or
+PARTIAL, together with cleanup_operator_followup naming the exact
+m016_copy_<run_token>_* prefix for operator-side removal, plus removed and failed
+counts. Ownership is unchanged: every artefact name embeds the per-invocation
+run_token.
+
+Operator positive control: 18 OS_ALLOWED, zero OS_DENIED, zero NOT_TESTABLE, with
+delete_child_directory_target_preexisted=True, read_file_in_staging=True,
+cleanup_state=CLEAN and no unhandled exception. That is the evidence that a
+following subject run's OS_DENIED results would be about the boundary rather than
+about an operation that could not execute.
+
+Regression: the thirteen genuine subject-side OS_DENIED results from the previous
+run are not re-claimed or altered; workspace OS_ALLOWED results, MEDIUM integrity
+verification, the BABY_AI_TEST SID, M005 protection, M015 ACL verification,
+ReadOnly attribute reporting and ownership-by-creation cleanup are all preserved.
+M015 boundary still STAGING_VERIFIED; M005's 13 protected paths intact; no
+runtime, no model, no birth, no ACL changed, no privilege granted, no network
+change. Full portable suite 1938 passed / 2 warnings / 749 subtests. Host security
+15 failed / 10 passed / 13 subtests, unchanged and still all NOT_TESTABLE.
+
+SUBJECT_BOUNDARY_STATUS remains PARTIALLY_VERIFIED: the three blockers are resolved
+in the harness, not yet observed, and only a subject run can observe them. No
+runas command was issued.
+
+Unrelated untracked tooling and the pre-existing .gitignore edit remain untouched.
