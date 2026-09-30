@@ -79,6 +79,11 @@ class ObservatorySnapshot:
     #: either on every poll would make the display the most expensive thing in
     #: the laboratory.
     deployment: dict[str, Any] = field(default_factory=dict)
+    #: Milestone 013: the birth ceremony and the single first experience. A dict
+    #: for the same reason as every other panel here, and for one more: the gate
+    #: decides whether a subject exists, so a view that could reach the ceremony
+    #: could reach a birth. The display reads a verdict; it never causes one.
+    birth_ceremony: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """The serialisable form. This is the API contract."""
@@ -96,6 +101,7 @@ class ObservatorySnapshot:
             "foundation": dict(self.foundation),
             "runtime_verification": dict(self.runtime_verification),
             "deployment": dict(self.deployment),
+            "birth_ceremony": dict(self.birth_ceremony),
             "state": self.state.to_dict(),
             "graph": self.graph.to_dict(),
             "recent_events": [a.to_dict() for a in self.recent_events],
@@ -143,6 +149,7 @@ def compose_snapshot(
     foundation: dict[str, Any] | None = None,
     runtime_verification: dict[str, Any] | None = None,
     deployment: dict[str, Any] | None = None,
+    birth_ceremony: dict[str, Any] | None = None,
 ) -> ObservatorySnapshot:
     """Build a snapshot from the three collaborating components.
 
@@ -166,4 +173,5 @@ def compose_snapshot(
         foundation=dict(foundation or {}),
         runtime_verification=dict(runtime_verification or {}),
         deployment=dict(deployment or {}),
+        birth_ceremony=dict(birth_ceremony or {}),
     )

@@ -1,0 +1,189 @@
+﻿{
+  "schema": "babylab/m013-birth-verification/v1",
+  "milestone": "M013",
+  "title": "Real birth ceremony and the single first environment experience",
+  "generated_at": "2026-09-30T07:00:31.704Z",
+  "host": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.14.3"
+  },
+  "verdict": {
+    "real_birth": "NOT_PERFORMED",
+    "gate_state": "BLOCKED",
+    "outcome": "BLOCKED",
+    "birth_occurred": false,
+    "t_birth": "UNAVAILABLE",
+    "subject": "NONE",
+    "lifecycle": "UNCREATED",
+    "first_experience": "NOT_PERFORMED",
+    "is_a_subject": false,
+    "experience_count_initial": null,
+    "experience_count_final": null,
+    "second_interaction": "NOT_ATTEMPTED"
+  },
+  "why_not_performed": "the birth gate is BLOCKED. No subject was created, no T_birth was set, and no experience was recorded. This is the correct outcome when the prerequisites have not been met: a birth that happened anyway would be the failure this milestone exists to prevent.",
+  "gate": {
+    "evaluated_by": "birth.gate13.evaluate_birth_gate, called with the live M012 ledger",
+    "breakdown": {
+      "BLOCKED": 11,
+      "READY": 5
+    },
+    "prerequisites": [
+      {
+        "name": "human_declaration",
+        "state": "BLOCKED"
+      },
+      {
+        "name": "model_identity",
+        "state": "BLOCKED"
+      },
+      {
+        "name": "model_digest",
+        "state": "BLOCKED"
+      },
+      {
+        "name": "runtime_identity",
+        "state": "BLOCKED"
+      },
+      {
+        "name": "runtime_compatibility",
+        "state": "BLOCKED"
+      },
+      {
+        "name": "real_runtime",
+        "state": "BLOCKED"
+      },
+      {
+        "name": "real_inference",
+        "state": "BLOCKED"
+      },
+      {
+        "name": "restricted_account_runtime",
+        "state": "BLOCKED"
+      },
+      {
+        "name": "protected_file_denial",
+        "state": "BLOCKED"
+      },
+      {
+        "name": "network_restriction",
+        "state": "READY"
+      },
+      {
+        "name": "model_immutability",
+        "state": "BLOCKED"
+      },
+      {
+        "name": "runtime_immutability",
+        "state": "BLOCKED"
+      },
+      {
+        "name": "environment_integrity",
+        "state": "READY"
+      },
+      {
+        "name": "provenance_integrity",
+        "state": "READY"
+      },
+      {
+        "name": "subject_key_policy",
+        "state": "READY"
+      },
+      {
+        "name": "laboratory_control",
+        "state": "READY"
+      }
+    ]
+  },
+  "observatory_panel": {
+    "source": "declaration_only",
+    "state": "BLOCKED",
+    "may_proceed": false,
+    "breakdown": {
+      "BLOCKED": 16
+    },
+    "executes_nothing": true
+  },
+  "replay": {
+    "model_output": {
+      "ceremony_id": "m013-58a1604ddf0c44ec",
+      "replay_kind": "MODEL_OUTPUT_REPLAY",
+      "verdict": "UNVERIFIABLE",
+      "checks": [
+        {
+          "claim": "the model produced a proposal",
+          "verdict": "UNVERIFIABLE",
+          "expected": null,
+          "observed": null,
+          "detail": "no birth occurred, so there is no model output to replay"
+        }
+      ],
+      "note": "model-output replay needs a completed birth; this ceremony did not complete, so nothing was replayed"
+    },
+    "environment": {
+      "ceremony_id": "m013-58a1604ddf0c44ec",
+      "replay_kind": "ENVIRONMENT_REPLAY",
+      "verdict": "UNVERIFIABLE",
+      "checks": [
+        {
+          "claim": "the environment event is reproducible",
+          "verdict": "UNVERIFIABLE",
+          "expected": null,
+          "observed": null,
+          "detail": "no birth occurred, so there is no environment event to replay"
+        }
+      ],
+      "note": "environment replay needs a completed birth; this ceremony did not complete, so the environment was never changed"
+    }
+  },
+  "clean_state": {
+    "event_store_events": 20,
+    "events_appended_by_m013": 0,
+    "provenance_ledger_entries": 14,
+    "provenance_entries_appended_by_m013": 0,
+    "event_chain_intact": true,
+    "birth_record_file_present": false,
+    "model_dir_present": false,
+    "private_keys": [
+      "HK-86ac3dc595e9.key",
+      "SK-239101557c64.key"
+    ],
+    "subject_key_provisioned": false,
+    "environment_state_hash_before": "8838dd347a41e9173795d9f1204ed372c0672599cdbbd6b0c2aa2ded97e24981",
+    "environment_state_hash_after": "8838dd347a41e9173795d9f1204ed372c0672599cdbbd6b0c2aa2ded97e24981",
+    "environment_unmutated": true
+  },
+  "key_policy": {
+    "decision": "NOT_REQUIRED",
+    "reason": "no subject-authored authenticated channel exists in the architecture as it stands: the birth ceremony's events are laboratory-generated and the environment interface does not require a subject signature. A key would be created for appearance, and creating one would make the subject appear ATTACHED before it has ever acted.",
+    "provisioned": false,
+    "refused_for_the_subject": [
+      "laboratory control credentials",
+      "the control token",
+      "provenance private signing authority",
+      "human-control credentials",
+      "private research keys",
+      "ACL manipulation capability"
+    ],
+    "new_trust_model_invented": false,
+    "revisit_justification": "M013 revisited the decision because a subject now exists, and concluded the architecture still needs no subject key. The revisit is recorded so the decision is not mistaken for an unexamined default."
+  },
+  "tests": {
+    "m013_birth": "94 passed",
+    "m013_replay": "15 passed",
+    "m013_observatory": "25 passed",
+    "portable_suite": "1575 passed, 749 subtests passed",
+    "host_security": "15 failed, 10 passed, 13 subtests -- NOT_TESTABLE, the harness cannot impersonate BABY_AI_TEST without SeImpersonatePrivilege and SeAssignPrimaryTokenPrivilege"
+  },
+  "what_this_is_not": {
+    "consciousness": "not established by any of this",
+    "subject": "no subject exists; birth_occurred is False",
+    "learning": "no weights were updated",
+    "memory": "no memory was written",
+    "autonomy": "no loop, goal, or self-directed action",
+    "curriculum": "the observation carried no labels, meanings, or guidance",
+    "real_inference": "no model was executed on this host"
+  },
+  "milestone_status": "M013 implemented and verified; no real birth performed because M012 is not configured",
+  "m014": "NOT STARTED"
+}

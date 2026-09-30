@@ -63,6 +63,7 @@ class ObservatorySession:
         self._foundation = self._read_foundation()
         self._runtime_verification = self._read_runtime_verification()
         self._deployment = self._read_deployment()
+        self._birth_ceremony = self._read_birth_ceremony()
         self.registry = SubjectRegistry(self.keyring, self._birth)
         self.reader = ObservatoryReader(store=self.store, clock=self.clock)
         self.attributor = Attributor(
@@ -187,6 +188,43 @@ class ObservatorySession:
                 "note": f"the deployment panel could not be read: {exc}",
             }
 
+    def _read_birth_ceremony(self) -> dict[str, Any]:
+        """The M013 birth-gate verdict, read from files. Executes nothing.
+
+        :func:`birth.m013_status.ceremony_only` reads the deployment declaration
+        and evaluates the gate against it. It runs no verification, no probe, no
+        inference, and no ceremony, and it imports nothing from
+        :mod:`birth.ceremony13`.
+
+        That last part is why the read surface is a separate module. M011's
+        import-graph test walks this file's AST and fails if it so much as names
+        ``verify`` -- correctly, because a display panel that runs verification
+        makes opening a terminal enough to execute a model. Routing through
+        :mod:`birth.m013_status` keeps that guarantee structural rather than a
+        matter of which functions this particular file happens to call.
+
+        The panel therefore cannot show READY. Only the verification command can
+        establish the evidence READY needs, so every execution-dependent
+        prerequisite reads BLOCKED here. That is the honest reading, and it is the
+        safe direction to be wrong in.
+        """
+        from babylab.errors import BabyLabError
+
+        try:
+            from birth.m013_status import ceremony_only
+
+            return ceremony_only(self.paths.root)
+        except (BabyLabError, OSError, ValueError) as exc:
+            return {
+                "state": "UNAVAILABLE",
+                "may_proceed": False,
+                "real_birth": "NOT_PERFORMED",
+                "subject": "NONE",
+                "first_experience": "NOT_PERFORMED",
+                "t_birth": "UNAVAILABLE",
+                "note": f"the birth-ceremony panel could not be read: {exc}",
+            }
+
     # -- updating ---------------------------------------------------------
     def update(self) -> ObservatorySnapshot:
         """Consume new events and return the resulting snapshot.
@@ -220,6 +258,7 @@ class ObservatorySession:
             foundation=self._foundation,
             runtime_verification=self._runtime_verification,
             deployment=self._deployment,
+            birth_ceremony=self._birth_ceremony,
         )
 
     def render(self, options: RenderOptions | None = None) -> str:

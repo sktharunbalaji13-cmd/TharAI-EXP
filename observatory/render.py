@@ -868,6 +868,69 @@ class ObservatoryRenderer:
         )
         return lines
 
+    def birth_ceremony_section(self, snapshot: ObservatorySnapshot) -> list[str]:
+        """Milestone 013: the birth gate, and the fact that no birth occurred.
+
+        Placed after the foundation selection because it consumes it: the gate is
+        the first thing in the system that asks "may a subject exist", and the
+        answer is mostly a restatement of the sixteen prerequisites below.
+
+        ``READY``, ``BLOCKED``, and ``FAILED`` are rendered in three different
+        colours and never merged. The distinction is the whole point of the gate:
+        BLOCKED means the laboratory has not established the prerequisites, and
+        FAILED means it established that they are violated. A display that
+        collapsed both into "not ready" would erase the difference between "we
+        have not looked" and "we looked and it is wrong".
+
+        The blocking prerequisites are counted rather than listed, because
+        sixteen lines would bury the single line a reader needs: no subject
+        exists, and this is correct.
+        """
+        block = snapshot.birth_ceremony or {}
+        if not block:
+            return []
+        lines = [self._rule("BIRTH GATE")]
+
+        state = str(block.get("state", "UNAVAILABLE"))
+        colour = {
+            "READY": FG_GREEN,
+            "FAILED": FG_RED,
+            "BLOCKED": FG_YELLOW,
+        }.get(state, DIM)
+        lines.append(self._kv("gate", self._c(state, colour)))
+
+        prerequisites = block.get("prerequisites") or []
+        if prerequisites:
+            tally: dict[str, int] = {}
+            for prerequisite in prerequisites:
+                key = str(prerequisite.get("state", "UNAVAILABLE"))
+                tally[key] = tally.get(key, 0) + 1
+            summary = "  ".join(
+                f"{count} {name}" for name, count in sorted(tally.items())
+            )
+            lines.append(self._kv("prerequisites", summary))
+
+        lines.append(
+            self._kv("real birth", self._c(
+                str(block.get("real_birth", "NOT_PERFORMED")), FG_YELLOW))
+        )
+        lines.append(
+            self._kv("subject", self._c(str(block.get("subject", "NONE")), FG_YELLOW))
+        )
+        lines.append(
+            self._kv("T_birth", self._c(str(block.get("t_birth", "UNAVAILABLE")), DIM))
+        )
+        lines.append(
+            self._kv("first experience", self._c(
+                str(block.get("first_experience", "NOT_PERFORMED")), FG_YELLOW))
+        )
+
+        note = block.get("note")
+        if note and self.options.detail:
+            for row in _wrap(str(note), self.options.width - 4):
+                lines.append("  " + self._c(row, DIM))
+        return lines
+
     def footer(self) -> list[str]:
         return [
             self._rule(),
@@ -883,6 +946,7 @@ class ObservatoryRenderer:
         sections.append(self.birth_section(snapshot))
         sections.append(self.foundation_section(snapshot))
         sections.append(self.deployment_section(snapshot))
+        sections.append(self.birth_ceremony_section(snapshot))
         sections.append(self.runtime_verification_section(snapshot))
         sections.append(self.state_section(snapshot))
         sections.append(self.graph_section(snapshot))

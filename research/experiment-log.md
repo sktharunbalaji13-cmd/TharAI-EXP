@@ -1,4 +1,4 @@
-# Experiment log
+﻿# Experiment log
 
 Dated record of what was actually done, what was observed, and what was decided.
 This is a research journal, not a changelog: it records reasoning and
@@ -6,7 +6,7 @@ observations, including the inconvenient ones.
 
 ---
 
-## 2026-09-26 — Milestone 001: laboratory instrumentation
+## 2026-09-26 â€” Milestone 001: laboratory instrumentation
 
 ### Scope
 
@@ -30,7 +30,7 @@ nothing else.
 | --- | --- |
 | 001 | Record decisions, not just code. |
 | 002 | Standard library only at runtime. |
-| 003 | HMAC now, Ed25519 **open** — depends on whether anyone outside this machine verifies the ledger. |
+| 003 | HMAC now, Ed25519 **open** â€” depends on whether anyone outside this machine verifies the ledger. |
 | 004 | No event taxonomy. A schema would be a curriculum, and a curriculum is an intervention on the observed system. |
 | 005 | Runtime data under `var/`; secrets and data out of Git. |
 | 006 | A seal is not a witness. |
@@ -42,8 +42,8 @@ and data directories, so `events/events.jsonl` sat beside `events/model.py`.
 Importing a package could have mutated data, and a careless `rm events/*` would
 have destroyed the source. Moved runtime data to `var/`. See `ADR-005`.
 
-**Authorship is derived, never declared.** The obvious design — caller passes
-`author="HUMAN"` — is worthless, because any code that can record an entry can
+**Authorship is derived, never declared.** The obvious design â€” caller passes
+`author="HUMAN"` â€” is worthless, because any code that can record an entry can
 claim to be the human, and the ledger would faithfully record lies *with a valid
 signature*. Authorship comes from a key ID resolved through the keyring. A
 declared author that conflicts with the key is discarded and the conflict is
@@ -66,11 +66,11 @@ exist.
 
 | Found | Impact if unfixed | Fix |
 | --- | --- | --- |
-| `EventStore.append_many` was O(n²) | 20 000 events took 110 s | Head-entry cache keyed on file size. Now 16 s. |
+| `EventStore.append_many` was O(nÂ²) | 20 000 events took 110 s | Head-entry cache keyed on file size. Now 16 s. |
 | Namespaces over 11 characters broke column alignment | Ragged, hard to scan | `fit_category()` right-truncates to a fixed width |
 | `latest_for_path` rescanned the whole ledger | Every version link was O(n) | Index cache; verification still reads from disk |
 | A control snapshot label could contain `..` or a path separator | A write could escape `human_control/snapshots/` | Sanitise to `[A-Za-z0-9_-]`, cap at 48, plus a containment check |
-| `…` rendered as `\ufffd` under PowerShell redirection | Corrupted research output | Force UTF-8 with `errors="replace"` |
+| `â€¦` rendered as `\ufffd` under PowerShell redirection | Corrupted research output | Force UTF-8 with `errors="replace"` |
 | Control test client hit a TCP RST | Test could not read the error response it triggered | Half-close the write side before reading |
 | Test fixture gained a step and broke absolute counts | False provenance failures | Assert on deltas against `baseline_entries` |
 
@@ -97,7 +97,7 @@ net user babylab_probe_xyz /add
 ```
 
 So the honest summary is that only the weakest boundary is in force, and it is
-bypassable by any process running as the same Windows user — which is currently
+bypassable by any process running as the same Windows user â€” which is currently
 everything. This is recorded in `docs/security-model.md`, in the trust-boundary
 script's own output, and in the completion report. It is not reported as
 passing anywhere.
@@ -366,8 +366,8 @@ refusal and the one most likely to be quietly abandoned later, because a
 self-selecting substrate is very convenient and the failure is invisible: two
 runs of "the same" experiment quietly get different weights.
 
-**The event is appended before the record is written.** The intuitive order —
-write the record, then announce it by hash — fails under interruption in a way
+**The event is appended before the record is written.** The intuitive order â€”
+write the record, then announce it by hash â€” fails under interruption in a way
 that is hard to recover from. Writing the event first means a crash leaves an
 event with no record: an announcement of a birth that did not happen. That is
 detectable. The cost is that the event cannot carry the record's hash, so the two
@@ -383,7 +383,7 @@ display whether a subject exists, and the function that knows is the ceremony,
 which holds the event-append path. Importing it for a read would have handed a
 read-only component the ability to write. The split makes the guarantee
 structural, and `ObservatoryImportClosureTests` walks the import graph to keep it
-that way — including a check that `birth.service` genuinely *does* reach the
+that way â€” including a check that `birth.service` genuinely *does* reach the
 event store, so the test cannot pass vacuously.
 
 **A recorded subject is not an attached subject.** A ceremony writes a record and
@@ -394,7 +394,7 @@ says `SUBJECT RECORDED, NOT KEY-ATTACHED` in those words.
 
 **`RUNTIME_UNVERIFIED` was added because the read-only path found a real
 overclaim.** `resolve_model_identity` returned `READY` when no runtime probe was
-supplied — which is exactly the case the Observatory always hits, since running a
+supplied â€” which is exactly the case the Observatory always hits, since running a
 binary is not a read-only act. A display showing `READY` would be telling a
 reader the model is usable when no process had run it. There is now a status for
 "weights verified, runtime unchecked", and `birth_status` reports
@@ -411,7 +411,7 @@ SHA-256, so every digest and integrity check runs for real. The runtime is
 **injected as a call argument**, never configured.
 
 That distinction is the whole point. Pointing a configuration at a fake runtime
-would write a lie into an immutable artefact — a permanent record describing a
+would write a lie into an immutable artefact â€” a permanent record describing a
 test double as a real substrate. Injecting availability instead leaves the sealed
 record describing a real runtime and puts the falsification in the test's own
 call site. The ceremony's refusal of `RuntimeKind.FAKE` is unconditional and does
@@ -434,7 +434,7 @@ A third was found after the milestone was committed, by reviewing the commit
 against the documentation rather than against the tests. The `ATTACHED` subject
 state keyed off the keyring alone, while three documents claimed it required a
 birth record *and* a key. Both could not be true, and the documentation's rule
-had no state at all for a key with no record — it would have reported a live
+had no state at all for a key with no record â€” it would have reported a live
 signing key as `NO_SUBJECT`.
 
 The code was right and the prose was wrong, for a reason worth stating: a signing
@@ -466,8 +466,8 @@ Applying that check to the fix found a fourth defect, immediately. The new
 never reached the screen. `ObservatoryRenderer.header` printed `subject_detail`
 only inside its `no_subject` branch; every other state got the banner alone. So
 `RECORDED_DETAIL` had been silently dropped from the display since the day it
-was written, and the whole point of the `RECORDED` state — that a human reading
-the terminal learns the subject cannot sign — was being lost at the last metre.
+was written, and the whole point of the `RECORDED` state â€” that a human reading
+the terminal learns the subject cannot sign â€” was being lost at the last metre.
 
 Nothing caught it because every test that mattered checked the model rather than
 the rendered text, and the one test that checked rendering
@@ -529,11 +529,11 @@ has caught them so far is deliberately reading the output rather than the code.
 ### Deliberately not built
 
 A model choice of any kind. A model download, search, or fallback. A baby AI
-key — the ceremony does not provision one. Any capability implementation: all
+key â€” the ceremony does not provision one. Any capability implementation: all
 are `UNAVAILABLE` or `NOT_YET_IMPLEMENTED`. Any stage, curriculum, or
 developmental sequence. Any claim of consciousness, sentience, emotion,
 motivation, curiosity, preference, personality, or memory. Any intelligence or
-readiness score. Any claim of `BABY_AI_AUTHORED` — the only classification is
+readiness score. Any claim of `BABY_AI_AUTHORED` â€” the only classification is
 `INHERITED_PRETRAINED`. An update or rewrite path for the birth record. Any
 process-level or OS-level isolation. Any second birth.
 
@@ -543,7 +543,7 @@ process-level or OS-level isolation. Any second birth.
    cannot run until a llama.cpp binary and a specific GGUF file with a recorded
    digest are chosen and placed. Nothing will choose them.
 2. **Digest provenance.** `model_sha256` must be a value you obtained, not one
-   this machine produced. Where do the real digests come from — the publisher, a
+   this machine produced. Where do the real digests come from â€” the publisher, a
    known-good manifest, or your own download-time measurement?
 3. **Namespace policy for a `BABY_AI` key.** Carried over from Milestone 002 and
    now slightly more urgent: a subject will exist before it can write, and the
@@ -556,7 +556,7 @@ process-level or OS-level isolation. Any second birth.
 
 ---
 
-## 2026-09-27 — Milestone 005: ACL boundary audit and a recovery defect
+## 2026-09-27 â€” Milestone 005: ACL boundary audit and a recovery defect
 
 ### The reported discrepancy
 
@@ -591,7 +591,7 @@ re-deriving it incorrectly later would be worse.
 ### A real gap the probe did surface
 
 `provenance/` holds executable code implementing the evidence system, and that
-code is writable by the subject account. That is a genuine policy question —
+code is writable by the subject account. That is a genuine policy question â€”
 the subject could edit the code that judges it. It is NOT part of the canonical
 M005 protected set, and widening the set is a policy decision for the human
 researcher, not something to change silently mid-audit. **Left unchanged and
@@ -609,7 +609,7 @@ removed the security boundary while still printing "Restored N path records".
 Reproduced in an isolated sandbox (never against the real boundary): the deny
 ACE count went 1 -> 0 on `human_control`, and the script reported success. The
 file `var/provenance/ledger.jsonl` kept its deny only because it is a file
-absent from the snapshot's directory list, so `/reset` never touched it — an
+absent from the snapshot's directory list, so `/reset` never touched it â€” an
 accident of layout, not a safeguard.
 
 **This is the mechanism by which a recovery operation could have destroyed the
@@ -647,7 +647,7 @@ model, no `BABY_AI` key, no birth, no autonomous process. M006 not started.
 
 ---
 
-## 2026-09-27 — Milestone 005: OS-boundary failure on parent directories
+## 2026-09-27 â€” Milestone 005: OS-boundary failure on parent directories
 
 ### Observed by a genuine BABY_AI_TEST process
 
@@ -695,7 +695,7 @@ Writing the invariant down surfaced two more cases the leaf-only audit missed:
    `Authenticated Users:(I)(M)`, and the directories had no delete deny, so the
    subject could empty a directory and then remove it via the parent's
    `FILE_DELETE_CHILD`.
-2. `research/` — the parent of the protected `experiment-log.md` — had no deny
+2. `research/` â€” the parent of the protected `experiment-log.md` â€” had no deny
    at all, the same leaf-parent case as `var/provenance`.
 
 ### The fix, and the policy decision behind it
@@ -705,11 +705,11 @@ revoked a capability the canonical policy deliberately grants: both
 `provenance_ledger` and `event_log` are marked `append_only_for_subject=True`.
 The researcher chose a **split deny**:
 
-- **Parents of fully-denied leaves** — `human_control/security`,
+- **Parents of fully-denied leaves** â€” `human_control/security`,
   `human_control/security/keys`: full `DENY(OI)(CI)(W,D)`. Their own rationale
   is that keeping `control.token` "external to the subject is what makes
   control privileged", so nothing there may remain writable.
-- **Parents of append-permitted leaves** — `var/provenance`, `var/events`:
+- **Parents of append-permitted leaves** â€” `var/provenance`, `var/events`:
   `DENY(OI)(CI)(W,D)` plus an explicit `ALLOW(AD)`. No create, no delete, no
   attribute writes; append preserved as the policy intends.
 - **Protected directories**: re-applied with `(OI)(CI)(W,D)` so the deny
@@ -725,7 +725,7 @@ The researcher chose a **split deny**:
 One `icacls` call in this repair silently failed: `(WAD)` is not a token
 `icacls` accepts, so the first Group B pass applied only the append grant and
 left `var/provenance` and `var/events` with an `ALLOW(AD)` and **no deny at
-all** — the inverse of the intent. It was caught by checking the exit code
+all** â€” the inverse of the intent. It was caught by checking the exit code
 rather than assuming success, and re-applied with valid tokens. Recorded
 because a boundary tool that reports success while doing nothing is precisely
 the failure mode this milestone exists to detect.
@@ -751,7 +751,7 @@ autonomous process. M006 not started.
 
 ---
 
-## 2026-09-27 — Milestone 005: final empirical closure
+## 2026-09-27 â€” Milestone 005: final empirical closure
 
 ### Human-executed cross-process evidence
 
@@ -799,7 +799,7 @@ Applying `(OI)(CI)` to the append-permitted parents, `var/provenance` and
 `var/events`, propagated the deny onto `ledger.jsonl` and `events.jsonl` as an
 **inherited** write deny. NTFS evaluates deny before allow, so that silently
 overrode the `(AD)` append grant and revoked the capability the canonical
-policy declares (`append_only_for_subject=True`) — at exactly the two files
+policy declares (`append_only_for_subject=True`) â€” at exactly the two files
 that need it. Re-applied those two parent denies without inheritance.
 
 The first regression test written for this passed against the broken boundary,
@@ -820,7 +820,7 @@ part and were discarded.
 
 The `BABY_AI_TEST:(AD)` append grant sits on a continuation line. It was
 therefore never recorded in the snapshot, and the closure round-trip deleted
-it — the same "reports success while losing the boundary" class as the earlier
+it â€” the same "reports success while losing the boundary" class as the earlier
 recovery defect, one level deeper. The parser now recognises a continuation
 line by the absence of a path token and requires a parenthesised rights group
 before accepting an entry. Verified in a sandbox: the `(AD)` ACE is captured
@@ -843,7 +843,7 @@ and survives `-Restore`.
 | `.git` | `(OI)(CI)(DENY)(W,D)` |
 | `human_control/birth_records` | ABSENT (no birth has occurred) |
 | `human_control/experiment_config/foundation.json` | ABSENT (no model configured) |
-| `baby_workspace`, `baby_workspace/temporary` | no `BABY_AI_TEST` ACE — writable, as intended |
+| `baby_workspace`, `baby_workspace/temporary` | no `BABY_AI_TEST` ACE â€” writable, as intended |
 
 Human write access re-verified on 14 paths including `docs/evidence` and
 `security/keys/private`. `Authenticated Users`, `SYSTEM` and `Administrators`
@@ -859,7 +859,7 @@ observer reports no experimental subject attached. M006 not started.
 
 ---
 
-## 2026-09-27 — Milestone 006: foundation model and runtime
+## 2026-09-27 â€” Milestone 006: foundation model and runtime
 
 ### What was built
 
@@ -872,7 +872,7 @@ Observatory telemetry.
 M003 already established a llama.cpp adapter, a strict foundation configuration
 and a model identity contract. M006 **extends** those rather than replacing them.
 The invocation builder, output parser and determinism rules stay in
-`birth/llamacpp.py`; M006 adds only what the contract required and M003 lacked —
+`birth/llamacpp.py`; M006 adds only what the contract required and M003 lacked â€”
 externally derived identity, digest verification before use, explicit failure
 kinds, and honest token accounting.
 
@@ -919,7 +919,7 @@ Two measurement decisions worth recording. First, WMI's `AdapterRAM` is a 32-bit
 field that saturates at 4 GiB, so on this 8 GiB card it would report 4 GiB; it is
 therefore never used as a VRAM total, and `nvidia-smi` is preferred. Second,
 admission returns `UNKNOWN` rather than admitting or refusing when VRAM cannot be
-observed — an estimate used to refuse would reject models that fit, and an
+observed â€” an estimate used to refuse would reject models that fit, and an
 optimistic assumption used to admit would accept models that fail at load.
 
 ### Two things a test could have got wrong, and did
@@ -932,7 +932,7 @@ fixed rather than loosened:
   `self.evaluate_capabilities`, and `re.compile` alongside a bare `compile`. It
   now matches the final attribute name against an exact set.
 - A check that telemetry renders no mental state scanned raw source text, so it
-  matched the module docstring — which names every banned concept in order to say
+  matched the module docstring â€” which names every banned concept in order to say
   it is absent. It now inspects emitted string literals with docstrings removed.
 
 A test that cannot detect the thing it names is worse than no test, because it
@@ -954,7 +954,7 @@ into a subject. M007 was not started.
 
 ---
 
-## 2026-09-27 — Milestone 007: environment and interaction substrate
+## 2026-09-27 â€” Milestone 007: environment and interaction substrate
 
 ### What was built
 
@@ -978,7 +978,7 @@ in code rather than asserted in prose:
 * Operations are named for mechanics. `GRASP` exists because something is
   movable; `INSERT` because something has measured interior capacity.
 * `implementation_type` is laboratory bookkeeping and is deliberately absent from
-  observations — how the world was built is not a property of the world.
+  observations â€” how the world was built is not a property of the world.
 * A test scans every emitted string literal (docstrings excluded, since the
   docstrings exist precisely to explain the absence) for 24 banned tokens.
 
@@ -1033,7 +1033,7 @@ looked for it, which is the argument for writing the independence tests at all.
 ### Vocabulary
 
 `ResourceLevel` was renamed `ResourceAmount`. "Level" implies a rank, and rank is
-curriculum vocabulary — the environment should not contain the word even in a
+curriculum vocabulary â€” the environment should not contain the word even in a
 type name, because a word that means progression in one place will be read as
 progression in another. The rename was not cosmetic; a banned-token test now
 fails on it.
@@ -1043,7 +1043,7 @@ fails on it.
 Deterministic replay across a branch: an action sequence replayed from a
 pre-sequence snapshot reproduces the recorded final state hash exactly, in a new
 branch, with the original event stream byte-identical. A deliberately divergent
-replay — the same action from a different base state — is detected and reported
+replay â€” the same action from a different base state â€” is detected and reported
 with both hashes, so the check is known to be capable of failing.
 
 Faults are covered for invalid action, missing target, malformed action,
@@ -1061,7 +1061,7 @@ SUBJECT ATTACHED. M008 was not started.
 
 ---
 
-## 2026-09-27 — Milestone 008: subject architecture and first-experience boundary
+## 2026-09-27 â€” Milestone 008: subject architecture and first-experience boundary
 
 ### What was built
 
@@ -1078,15 +1078,15 @@ FOUNDATION MODEL != SUBJECT != ENVIRONMENT != LABORATORY
 
 A pretrained artifact is referenced, never identified with. The subject's digest
 never equals the artifact's digest, and the artifact classification is always
-INHERITED_PRETRAINED — structurally, not by declaration.
+INHERITED_PRETRAINED â€” structurally, not by declaration.
 
 ### The harness is not a birth
 
 The whole milestone stands or falls on this. Test subjects live in memory and
 caller-supplied temporary directories. They are never written to
 `human_control/`, never given a keyring role, never registered in the real
-session registry. The birth ceremony's two tripwires — `birth_records/BIRTH.json`
-and an active BABY_AI key — are asserted absent after the suite runs, and the
+session registry. The birth ceremony's two tripwires â€” `birth_records/BIRTH.json`
+and an active BABY_AI key â€” are asserted absent after the suite runs, and the
 observer still reports NO EXPERIMENTAL SUBJECT ATTACHED. A test subject is not
 the Baby, and the laboratory cannot see one as attached because attachment
 criteria were never constructed.
@@ -1098,7 +1098,7 @@ M008 builds the history. Retrieval, consolidation, and everything that would
 make it memory are separate milestones with separate reviews. The state carries
 no store of any kind, and unimplemented capabilities are named absences
 ("semantic_memory: UNAVAILABLE - no memory system exists") rather than empty
-lists — an empty list would imply a system that exists and is merely empty.
+lists â€” an empty list would imply a system that exists and is merely empty.
 
 ### Three things the implementation got wrong before the tests passed
 
@@ -1110,7 +1110,7 @@ lists — an empty list would imply a system that exists and is merely empty.
 2. **The head hash was circular.** The stored experience's hash covers the
    resulting state hash, which covers the state, which covers the head. There
    is no ordering that resolves this, so the experience carries a `content_hash`
-   — everything except the linkage — which the state advances with, and the
+   â€” everything except the linkage â€” which the state advances with, and the
    full hash covers the completed linkage. Both are checked: the head names
    content that exists, and the full hash names the completed record.
 
@@ -1147,7 +1147,7 @@ started.
 
 ---
 
-## 2026-09-27 — Milestone 009: birth ceremony and first controlled experience
+## 2026-09-27 â€” Milestone 009: birth ceremony and first controlled experience
 
 ### What was built
 
@@ -1168,7 +1168,7 @@ manufactured.
 
 Two rules, both tested with injected checks because the real checks depend on
 the machine: UNKNOWN never becomes PASS, and a check that raises blocks. Absence
-is FAIL, not UNKNOWN — "no model configured" is an observed fact. Every check
+is FAIL, not UNKNOWN â€” "no model configured" is an observed fact. Every check
 always runs, so one evaluation shows all fourteen answers instead of stopping
 at the first failure and hiding the rest. Security checks re-inspect the live
 filesystem rather than reading M005's evidence file; checks that would need a
@@ -1179,7 +1179,7 @@ side effect say what they checked instead of performing it.
 There is no code path past a failure: each step is checked before the next
 begins, the failure is recorded with step, reason and detail, the record is
 terminated, and nothing downstream is fabricated. The aborted REAL run on this
-machine has two events — preflight and the failed gate — and no subject id, no
+machine has two events â€” preflight and the failed gate â€” and no subject id, no
 T_birth, no experience, no completion. Rollback is evidence preservation, never
 cleanup.
 
@@ -1201,7 +1201,7 @@ integrity to make the comparison pass.
 
 ### What the ceremony does not do
 
-No loop, no scheduler, no background process — asserted over the AST with the
+No loop, no scheduler, no background process â€” asserted over the AST with the
 caller-driven replay explicitly excluded by name. No memory, no learning, no
 training vocabulary, no physical interfaces, no network. No curriculum anywhere
 in the package. ACTIVE is process state only.
@@ -1596,3 +1596,99 @@ no subject, no model, no weights, no probe residue. The M009 birth gate still
 BLOCKED on MODEL_NOT_CONFIGURED across all fourteen prerequisites. M013 not
 started.
 
+
+---
+
+## 2026-09-30 - Milestone 013: real birth ceremony and the first real experience
+
+M012 ended with no foundation. M013 asks what happens if someone tries to make a
+subject anyway, and the answer this milestone builds is *nothing happens*.
+
+### The invariant, and why it needed testing from both directions
+
+A real birth is the only outcome that creates a subject; every other outcome
+leaves nothing behind. The failure matrix proves each of the sixteen
+prerequisites can independently prevent a birth. The invariant sweep then proves
+no failure path leaves a partial subject, a stray T_birth, or an orphaned
+experience.
+
+The sweep is what caught three real defects, each of which the matrix alone
+would have missed. A gate that refuses *correctly* is not sufficient on its own --
+a gate that refuses *after* mutating state has still created a subject.
+
+### Three defects found and fixed
+
+**Compatibility judged on the wrong field.** The gate checked
+`established_by_load` and never read `compatibility.compatibility`. A load that ran
+and rejected the artifact sets that flag too, so an INCOMPATIBLE deployment read
+as READY and the ceremony completed a birth on a model the runtime cannot load.
+This is the most serious of the three: the milestone's central guarantee was
+bypassed by a real, plausible input.
+
+**Context screening after activation.** A model context claiming to be the
+subject was refused after the lifecycle reached ACTIVE, so the record carried a
+T_birth and no completed birth -- precisely the artifact this milestone must not
+emit. Screening now runs before anything is created, and the test asserts
+`lifecycle == UNCREATED` and an empty creation record, not merely an abort.
+
+**A stop that was only asserted.** `second_interaction = "REFUSED"` was a claim
+with nothing enforcing it. Added `SingleInteractionEnvironment`, which permits one
+action and raises `SecondInteractionRefused` on the second, and had the ceremony
+*request* that second action so the recorded refusal corresponds to a real
+exception. A ceremony that says it stopped but never tested whether it could
+continue has not shown anything about stopping.
+
+### The Observatory regression M011 caught
+
+The first Observatory panel called `foundation.m012.verify` to obtain a ledger,
+which would have made opening the display able to run verification. M011's
+AST-based import-graph test caught it -- a test that walks the AST rather than
+grepping, so a module documenting the ban cannot pass by documenting it.
+
+The fix was a read-only surface, not a suppression: `birth/m013_status.py` reads
+the deployment declaration and imports nothing that can execute. The consequence
+is stated rather than worked around -- the panel can never report READY, because
+the evidence READY needs comes from the verification command, not a file read. On
+this host it reads 16 BLOCKED. That is the safe direction to be wrong in.
+
+### Replay: two questions, and honest UNVERIFIABLE
+
+MODEL_OUTPUT_REPLAY and ENVIRONMENT_REPLAY are kept separate because they answer
+different things. Conflating them would hide the failure that matters for a birth:
+a proposal that reproduces while the event that supposedly taught the subject does
+not. Both report UNVERIFIABLE rather than CONFIRMED when they cannot check, since
+a replay that finds nothing to contradict has established nothing.
+
+The environment replay also checks environment *identity*, not just state hash --
+two fresh deterministic environments share an initial state hash, so state alone
+cannot distinguish "the same world" from "a different world that starts the same
+way". Found by a test that failed and was worth keeping.
+
+### Key policy revisited, not inherited
+
+M009 decided no subject key. M013 revisits it because a subject now exists.
+Unchanged: the environment interface requires no subject signature, and
+provisioning a key would make the subject appear ATTACHED before it had ever
+acted. Nothing provisioned. Still refused the control token, provenance signing
+authority, human-control credentials, and ACL manipulation.
+
+### Result
+
+BLOCKED, correctly. Gate 11 BLOCKED / 5 READY; Observatory panel 16 BLOCKED.
+birth_occurred False, T_birth UNAVAILABLE, subject NONE, first experience
+NOT_PERFORMED, experience count unchanged.
+
+Nothing written. Event store 20 events, chain intact, 0 appended. Provenance 14
+entries, 0 appended. No BIRTH.json, no model directory, no subject key.
+Environment state hash unchanged.
+
+### Tests
+
+133 M013 tests (94 birth, 15 replay, 25 observatory). Portable suite 1575 passed,
+749 subtests passed. Host security 15 failed / 10 passed / 13 subtests, all
+NOT_TESTABLE for the unchanged reason: this session holds neither
+SeImpersonatePrivilege nor SeAssignPrimaryTokenPrivilege, so the harness cannot
+impersonate BABY_AI_TEST. Unchanged from M009 through M012.
+
+M013 is implemented and verified. What has not happened is a birth, and that
+remains the correct state of the laboratory. M014 not started.
