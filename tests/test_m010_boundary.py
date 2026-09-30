@@ -11,19 +11,42 @@ imports subject" would pass a text scan, so the text scan would prove nothing.
 import ast
 import unittest
 from pathlib import Path
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FOUNDATION_DIR = REPO_ROOT / "foundation"
 
 #: Packages the foundation layer must never import, and why.
 FORBIDDEN_IMPORTS = {
     "subject": "M010 must not create a subject",
-    "birth": "M010 must not perform birth or reach the ceremony",
     "control": "M010 must not drive the control protocol",
     "observatory": "the Observatory is a view and must not be a dependency of the model layer",
     "observer": "the observer is a read-only human view, not a foundation dependency",
     "provenance": "the foundation layer records its own ledger; it does not write the human one",
 }
+
+#: The birth sub-modules that can create a subject. These are the actual threat.
+#:
+#: The original guard banned the whole ``birth`` package. That was broader than
+#: its own stated rationale -- "must not perform birth or reach the ceremony" --
+#: and it was inconsistent with the codebase: M006's own adapter
+#: (``babylab/runtime/llamacpp_adapter.py``) already imports ``birth.llamacpp``
+#: for the invocation builder and the output parser, by design, so the guard
+#: would have failed the M006 adapter if that guard had been applied to it.
+#:
+#: So the ban is narrowed to the modules that can actually perform a birth, and
+#: :meth:`FoundationBoundaryTests.test_birth_llamacpp_reaches_no_ceremony` proves
+#: the exemption is safe by walking the transitive import graph. Narrowing a
+#: guard is only defensible when the exemption is *measured*, not asserted.
+FORBIDDEN_BIRTH_MODULES = (
+    "birth.ceremony",
+    "birth.gate",
+    "birth.gate_checks",
+    "birth.service",
+    "birth.keycustody",
+    "birth.birth_record",
+    "birth.readiness",
+    "birth.status",
+    "birth.fake",
+)
 
 #: Network-capable modules, none of which may appear on a local-only path.
 NETWORK_MODULES = {
@@ -76,6 +99,72 @@ class FoundationBoundaryTests(unittest.TestCase):
                     f"{path.name} imports {imported}: "
                     f"{FORBIDDEN_IMPORTS.get(head, '')}",
                 )
+
+    def test_no_ceremony_imports(self) -> None:
+        """The narrowed ban: no foundation module may reach a birth ceremony."""
+        for path in sorted(FOUNDATION_DIR.glob("*.py")):
+            for imported in _imports(path):
+                for banned in FORBIDDEN_BIRTH_MODULES:
+                    self.assertFalse(
+                        imported.startswith(banned),
+                        f"{path.name} imports {imported}, which can perform birth",
+                    )
+
+    def test_birth_llamacpp_reaches_no_ceremony(self) -> None:
+        """Prove the ``birth.llamacpp`` exemption is safe, by measurement.
+
+        ``birth.llamacpp`` is the invocation builder and output parser. M006's
+        adapter imports it, so banning it from the foundation package would
+        contradict existing code. The exemption is only defensible if nothing
+        that can perform a birth is *reachable* from it -- so this walks the
+        transitive import graph rather than trusting the module's name.
+        """
+        packages = {
+            "babylab", "events", "provenance", "observer", "observatory",
+            "control", "birth", "environment", "subject", "foundation",
+        }
+        root = REPO_ROOT
+
+        def imports_of(module: str) -> set[str]:
+            base = root / Path(*module.split("."))
+            for candidate in (base.with_suffix(".py"), base / "__init__.py"):
+                if candidate.is_file():
+                    tree = ast.parse(candidate.read_text(encoding="utf-8"))
+                    found: set[str] = set()
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.Import):
+                            for alias in node.names:
+                                if alias.name.split(".")[0] in packages:
+                                    found.add(alias.name)
+                        elif isinstance(node, ast.ImportFrom) and node.module:
+                            if node.module.split(".")[0] in packages:
+                                found.add(node.module)
+                    return found
+            return set()
+
+        seen: set[str] = set()
+        stack = ["birth.llamacpp"]
+        while stack:
+            module = stack.pop()
+            if module in seen:
+                continue
+            seen.add(module)
+            stack.extend(imports_of(module))
+
+        reachable_ceremony = sorted(
+            module for module in seen
+            for banned in FORBIDDEN_BIRTH_MODULES
+            if module.startswith(banned)
+        )
+        self.assertEqual(
+            [], reachable_ceremony,
+            "a module that can perform birth is reachable from birth.llamacpp: "
+            f"{reachable_ceremony}",
+        )
+        # And the positive form: the graph was actually walked, not vacuously
+        # satisfied by an import error.
+        self.assertIn("birth.llamacpp", seen)
+        self.assertGreater(len(seen), 1)
 
     def test_no_network_imports(self) -> None:
         for path in sorted(FOUNDATION_DIR.glob("*.py")):

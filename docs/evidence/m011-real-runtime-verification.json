@@ -1,0 +1,163 @@
+{
+  "schema": "babylab/m011-verification/v1",
+  "milestone": "M011",
+  "real_runtime": {
+    "status": "NOT_TESTABLE",
+    "reason": "no model artifact and no configured runtime binary exist on this host",
+    "unconfigured_binary_found": {
+      "path": "C:/Users/k.tharun balaji/.docker/bin/inference/llama-server.exe",
+      "size_bytes": 8438086,
+      "sha256": "8bb68042d0c779f40f7d30687b88475de39fd36f2ebff313c66110268e2b1160",
+      "action_taken": "NOT selected, NOT declared, NOT executed",
+      "why": "the milestone forbids searching the filesystem for an arbitrary executable and selecting the first one found; the substrate must be a human's choice, not a property of what happened to be installed"
+    },
+    "mode_is_derived": true,
+    "real_unreachable_when_runner_supplied": true
+  },
+  "real_inference": {
+    "status": "NOT_TESTABLE",
+    "reason": "no artifact to run and no executable to run it with",
+    "prompt_digest": null,
+    "output_digest": null,
+    "token_accounting": {
+      "policy": "OBSERVED only when the runtime prints a count; a total is DERIVED; anything else is UNAVAILABLE",
+      "m003_gap": "the completion-token patterns do not recognise llama.cpp's 'eval time = X ms / N runs' form, so a real build may report UNAVAILABLE for generated tokens"
+    }
+  },
+  "hardware_measured_now": {
+    "os": "Windows 11 Home Single Language 25H2 (build 26200)",
+    "os_registry_product_name_verbatim": "Windows 10 Home Single Language",
+    "os_correction": "the registry label is stale on Windows 11; the build number is authoritative and the raw string is reported separately rather than quoted as the truth",
+    "cpu": "AMD Ryzen 7 7840HS w/ Radeon 780M Graphics",
+    "logical_processors": 16,
+    "physical_cores": 8,
+    "ram_total_gib": 15.29,
+    "ram_available_gib": 2.72,
+    "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "vram_total_bytes": 8585740288,
+    "vram_free_bytes": 8342470656,
+    "driver": "592.82",
+    "disk_free_gib": 229.4,
+    "python": "3.14.3",
+    "wmi_adapter_ram_used": false,
+    "wmi_note": "Win32_VideoController.AdapterRAM saturates at 4 GiB and is never used as a VRAM figure",
+    "m006_record_substituted": false
+  },
+  "process_identity": {
+    "status": "VERIFIED",
+    "account": "k.tharun balaji",
+    "domain": "THARUNBALAJI-LA",
+    "sid": "S-1-5-21-2406520953-1060965512-844951592-1001",
+    "integrity_level": "MEDIUM",
+    "is_elevated": false,
+    "measured_from": "a live process token, not from configuration"
+  },
+  "restricted_account_runtime": {
+    "status": "NOT_TESTABLE",
+    "intended_account": "THARUNBALAJI-LA\\BABY_AI_TEST",
+    "intended_sid": "S-1-5-21-2406520953-1060965512-844951592-1022",
+    "privileges_missing": [
+      "SeImpersonatePrivilege",
+      "SeAssignPrimaryTokenPrivilege"
+    ],
+    "mechanisms_refused": {
+      "CreateProcessWithTokenW": "requires a stored password; never accepted",
+      "runas": "interactive prompt; an unattended harness that waits for one cannot be distinguished from a hung one"
+    },
+    "fallback_taken": false,
+    "fallback_would_have_proven": "nothing about the restricted account",
+    "mechanism_implemented": "CreateProcessAsUserW with a token duplicated from a live subject process",
+    "mechanism_exercised": false
+  },
+  "security": {
+    "protected_file_probe": {
+      "status": "NOT_TESTABLE",
+      "reason": "the probe ran as the operator, not as the subject account; boundary_meaningful is false",
+      "categories_probed": [
+        "provenance",
+        "event",
+        "human_control",
+        "private_key",
+        "research",
+        "control_token"
+      ],
+      "attempts": 9,
+      "categories_silently_skipped": 0,
+      "left_no_artefact": true
+    },
+    "m005_boundary": "intact at 11/11; workspaces un-denied; unchanged by M011",
+    "acl_modified": false,
+    "permission_modified": false,
+    "ownership_taken": false
+  },
+  "workspace": {
+    "write_allowed": true,
+    "readback_ok": true,
+    "content_matched": true,
+    "cleanup_ok": true,
+    "left_no_artefact": true
+  },
+  "immutability": {
+    "model_checked": true,
+    "runtime_binary_checked": true,
+    "captured": "before and after the run, not after only",
+    "mutation_verdict": "ARTIFACT MUTATED / RUNTIME MUTATED, and the run refuses to continue"
+  },
+  "gpu": {
+    "confirmation_requires": "a non-CPU backend from the runtime AND an affirmative offload line from its own output",
+    "layer_count_is_evidence": false,
+    "exercised_with_a_real_runtime": false
+  },
+  "vram": {
+    "source": "nvidia-smi, two separate point-in-time queries",
+    "total_bytes": 8585740288,
+    "runtime_allocation": "UNAVAILABLE",
+    "runtime_allocation_note": "device-wide totals cannot be attributed to one process, so no delta is reported as an allocation"
+  },
+  "network": {
+    "policy": "LOCAL_ONLY_NO_FETCH",
+    "outbound_attempted": false,
+    "acquisition": "none",
+    "structural_evidence": "no module on the runtime path imports a network entry point"
+  },
+  "observatory": {
+    "runtime_verification_section": true,
+    "reads_capability_only": true,
+    "executes_anything": false,
+    "psychological_fields": 0
+  },
+  "guard_narrowed": {
+    "guard": "tests/test_m010_boundary.py no_forbidden_package_imports",
+    "was": "banned the whole birth package",
+    "now": "bans the modules that can perform a birth",
+    "justified_by": [
+      "M006's own adapter already imports birth.llamacpp by design",
+      "a new test walks the transitive import graph from birth.llamacpp and asserts no ceremony module is reachable"
+    ]
+  },
+  "critical_final_state": {
+    "subject": "NONE",
+    "birth": "NOT_PERFORMED",
+    "baby_ai_key": "NOT_CREATED",
+    "autonomy": "NONE",
+    "memory": "NONE",
+    "learning": "NONE",
+    "self_modification": "NONE"
+  },
+  "tests": {
+    "m011_real_runtime": "44 passed",
+    "m010_boundary": "12 passed (11 + the new graph walk)",
+    "portable_suite": "1377 passed, 747 subtests",
+    "host_security_suite": "15 failed, 10 passed (harness NOT_TESTABLE, unchanged since M005 closure)"
+  },
+  "not_testable_conditions": [
+    "REAL_RUNTIME: no artifact and no configured runtime binary",
+    "real GGUF load and real inference: nothing to load",
+    "GPU and VRAM evidence from a real runtime: no runtime ran",
+    "determinism of a real run: nothing to repeat",
+    "model and runtime immutability across a real run: no run occurred",
+    "SUBJECT_ACCOUNT_RUNTIME: the session holds neither impersonation privilege, and this laboratory never accepts a password",
+    "protected-file probe under the restricted identity: the probe ran as the operator, so its access results are not evidence about the subject"
+  ],
+  "unresolved_defects": []
+}

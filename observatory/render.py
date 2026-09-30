@@ -39,6 +39,29 @@ FG_RED = "38;5;203"
 WIDTH = 78
 
 
+def _wrap(text: str, width: int) -> list[str]:
+    """Greedy word wrap. Used for reasons that must be readable in full.
+
+    A refusal reason is the most useful thing this section can print, and
+    truncating it would leave the reader unable to act on it. Width is floored
+    so a narrow terminal cannot produce a zero-length loop.
+    """
+    usable = max(20, width)
+    words = str(text).split()
+    if not words:
+        return []
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        if len(current) + 1 + len(word) <= usable:
+            current = f"{current} {word}"
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    return lines
+
+
 @dataclass(frozen=True)
 class RenderOptions:
     """Display options. ``detail`` adds traceability, which is off by default."""
@@ -604,6 +627,151 @@ class ObservatoryRenderer:
 
         return lines
 
+    def runtime_verification_section(self, snapshot: ObservatorySnapshot) -> list[str]:
+        """Milestone 011: real-runtime verification and execution identity.
+
+        Sits inside the foundation area because it extends the same claim rather
+        than starting a new one. M010 asked "is there a verified model and
+        runtime"; M011 asks "did a real process actually run one, and which
+        account was it".
+
+        The section is built so that a partial verification cannot read as a
+        complete one. ``REAL_RUNTIME`` is the only mode coloured as a success,
+        ``STUB_RUNTIME`` and ``SIMULATED`` are amber because they exist and are
+        not what acceptance requires, and ``NOT_TESTABLE`` is plain and
+        unexplained-looking until its reason is printed underneath it -- which is
+        exactly the point, since a bare code would invite the reader to assume a
+        problem with the laboratory rather than with the host.
+        """
+        block = snapshot.runtime_verification or {}
+        if not block:
+            return []
+        lines = [self._rule("RUNTIME VERIFICATION")]
+
+        mode = str(block.get("inference_mode", "NOT_TESTABLE"))
+        if mode == "REAL_RUNTIME":
+            mode_colour = FG_GREEN
+        elif mode in {"STUB_RUNTIME", "SIMULATED"}:
+            mode_colour = FG_YELLOW
+        else:
+            mode_colour = DIM
+        lines.append(self._kv("runtime mode", self._c(mode, mode_colour)))
+
+        outcome = str(block.get("inference_outcome", "NOT_RUN"))
+        outcome_colour = FG_GREEN if outcome == "COMPLETED" else FG_YELLOW
+        lines.append(self._kv("inference", self._c(outcome, outcome_colour)))
+
+        prompt_d = block.get("prompt_sha256")
+        output_d = block.get("output_sha256")
+        lines.append(
+            self._kv("prompt digest",
+                     (prompt_d[:16] + "...") if prompt_d else self._c("UNAVAILABLE", DIM))
+        )
+        lines.append(
+            self._kv("output digest",
+                     (output_d[:16] + "...") if output_d else self._c("UNAVAILABLE", DIM))
+        )
+
+        accounting = block.get("token_accounting") or {}
+        if accounting:
+            def _count(part: Any) -> str:
+                if not isinstance(part, dict) or part.get("value") is None:
+                    return "UNAVAILABLE"
+                return f"{part['value']} {str(part.get('status', '?')).lower()}"
+
+            lines.append(
+                self._kv("tokens (p/gen/total)",
+                         f"{_count(accounting.get('prompt_tokens'))}"
+                         f" / {_count(accounting.get('completion_tokens'))}"
+                         f" / {_count(accounting.get('total_tokens'))}")
+            )
+
+        verdict = block.get("determinism")
+        if verdict:
+            det_colour = FG_GREEN if verdict == "DETERMINISTIC_FOR_TEST_CONFIGURATION" else FG_YELLOW
+            lines.append(self._kv("determinism", self._c(str(verdict), det_colour)))
+
+        model_imm = block.get("model_immutable")
+        runtime_imm = block.get("runtime_immutable")
+        if model_imm is not None:
+            lines.append(
+                self._kv("model unchanged",
+                         self._c("YES" if model_imm is True else
+                                 ("NO" if model_imm is False else "UNAVAILABLE"),
+                                 FG_GREEN if model_imm is True
+                                 else (FG_RED if model_imm is False else DIM)))
+            )
+        if runtime_imm is not None:
+            lines.append(
+                self._kv("runtime unchanged",
+                         self._c("YES" if runtime_imm is True else
+                                 ("NO" if runtime_imm is False else "UNAVAILABLE"),
+                                 FG_GREEN if runtime_imm is True
+                                 else (FG_RED if runtime_imm is False else DIM)))
+            )
+
+        identity = block.get("process_identity") or {}
+        if identity:
+            account = identity.get("account", "UNAVAILABLE")
+            domain = identity.get("domain", "")
+            lines.append(
+                self._kv("process identity",
+                         f"{domain}\\{account}" if account != "UNAVAILABLE"
+                         else self._c("UNAVAILABLE", DIM))
+            )
+            lines.append(
+                self._kv("process sid",
+                         str(identity.get("sid", "UNAVAILABLE")))
+            )
+            lines.append(
+                self._kv("integrity", str(identity.get("integrity_level", "UNAVAILABLE")))
+            )
+            lines.append(
+                self._kv("elevated", str(identity.get("is_elevated", "UNAVAILABLE")))
+            )
+        restricted = block.get("restricted_account_runtime")
+        if restricted:
+            colour = {
+                "VERIFIED": FG_GREEN, "FAILED": FG_RED,
+            }.get(str(restricted), FG_YELLOW)
+            lines.append(
+                self._kv("subject account", self._c(str(restricted), colour))
+            )
+            reason = str(block.get("restricted_account_reason", "")).strip()
+            if reason:
+                for chunk in _wrap(reason, self.options.width - 24):
+                    lines.append("  " + self._c(chunk, DIM))
+
+        probe = block.get("protected_probe")
+        if probe:
+            lines.append(
+                self._kv("protected probe",
+                         f"{probe.get('protected_denied', 0)} of "
+                         f"{probe.get('protected_attempts', 0)} denied")
+            )
+            runner = probe.get("runner_account", "UNAVAILABLE")
+            lines.append(
+                self._kv("probe ran as", str(runner))
+            )
+
+        network = block.get("network")
+        if network:
+            lines.append(
+                self._kv("network", self._c(str(network), FG_GREEN))
+            )
+
+        gpu = block.get("gpu_usage")
+        if gpu:
+            lines.append(self._kv("gpu", str(gpu)))
+
+        lines.append(
+            self._kv("subject", self._c("NONE - a runtime is not a subject", FG_YELLOW))
+        )
+        lines.append(
+            self._kv("birth", self._c("NOT_PERFORMED", FG_YELLOW))
+        )
+        return lines
+
     def footer(self) -> list[str]:
         return [
             self._rule(),
@@ -618,6 +786,7 @@ class ObservatoryRenderer:
         sections: list[list[str]] = [self.header(snapshot)]
         sections.append(self.birth_section(snapshot))
         sections.append(self.foundation_section(snapshot))
+        sections.append(self.runtime_verification_section(snapshot))
         sections.append(self.state_section(snapshot))
         sections.append(self.graph_section(snapshot))
         sections.append(self.events_section(snapshot))

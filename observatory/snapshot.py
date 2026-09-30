@@ -68,6 +68,11 @@ class ObservatorySnapshot:
     #: would put a model loader inside a view that must be unable to write, and
     #: would let the display trigger the binary execution it is reporting on.
     foundation: dict[str, Any] = field(default_factory=dict)
+    #: Milestone 011: real-runtime verification and execution identity. Also a
+    #: dict. The distinction from ``foundation`` is deliberate: this one is about
+    #: a process that ran, and letting a view launch one to find out would make
+    #: the answer depend on the display being open.
+    runtime_verification: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """The serialisable form. This is the API contract."""
@@ -83,6 +88,7 @@ class ObservatorySnapshot:
             "trust": dict(self.trust),
             "os_boundary": dict(self.os_boundary),
             "foundation": dict(self.foundation),
+            "runtime_verification": dict(self.runtime_verification),
             "state": self.state.to_dict(),
             "graph": self.graph.to_dict(),
             "recent_events": [a.to_dict() for a in self.recent_events],
@@ -128,6 +134,7 @@ def compose_snapshot(
     faults: list[str] | None = None,
     birth: dict[str, Any] | None = None,
     foundation: dict[str, Any] | None = None,
+    runtime_verification: dict[str, Any] | None = None,
 ) -> ObservatorySnapshot:
     """Build a snapshot from the three collaborating components.
 
@@ -149,4 +156,5 @@ def compose_snapshot(
         generated_at=timestamp,
         birth=dict(birth or {}),
         foundation=dict(foundation or {}),
+        runtime_verification=dict(runtime_verification or {}),
     )

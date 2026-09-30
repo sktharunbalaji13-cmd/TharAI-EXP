@@ -1346,3 +1346,135 @@ no model, no weights, no autonomous process. The M009 birth gate still reports
 BLOCKED on MODEL_NOT_CONFIGURED across all fourteen prerequisites. M011 not
 started.
 
+---
+
+## 2026-09-30 - Milestone 011: real runtime, subject-account execution, and end-to-end verification
+
+### What was built
+
+The two gaps M010 reported closed: real inference, and the runtime process
+exercised under the restricted account. `foundation/hardware.py`,
+`process_identity.py`, `restricted.py`, `win32.py`, `probe.py`,
+`real_runtime.py`, `verification.py`, and `m011_status.py`; an Observatory
+section; two test files.
+
+REAL_RUNTIME = NOT_TESTABLE. REAL_INFERENCE = NOT_TESTABLE.
+SUBJECT_ACCOUNT_RUNTIME = NOT_TESTABLE. SUBJECT = NONE. BIRTH = NOT_PERFORMED.
+No model was downloaded, searched for, or selected.
+
+### The unconfigured binary, and the discipline not to use it
+
+A machine-wide survey found an 8 MB llama-server.exe in a Docker bin directory
+and zero GGUF files anywhere. It was not declared and not executed. The
+specification forbids selecting the first executable found, and doing so would
+make the substrate a property of what happened to be installed rather than of
+what a human chose. Its digest is recorded in the documentation so a human can
+choose to declare it knowingly, and its absence from the run is the honest
+outcome.
+
+### Real, stub, and simulated are derived, never declared
+
+ExecutionMode is computed from what was invoked. A caller-supplied runner makes
+REAL_RUNTIME unreachable -- there is no flag or argument that converts a stubbed
+run into a real one. Verified end to end against a fixture: 18 of 21 criteria
+SATISFIED and real_inference_performed NOT_TESTABLE with the reason spelled out.
+A partial verification cannot read as a complete one.
+
+### Three defects in the identity code, all of which made it less honest
+
+ctypes.get_last_error() does not track the real Win32 error, so a failed
+OpenProcess reported code 0 and ERROR_ACCESS_DENIED rendered as "the operation
+completed successfully" with a null handle. Undeclared ctypes signatures truncate
+64-bit pointers to c_int, raising OverflowError several frames from the cause.
+And the integrity level read a mandatory-label SID through GetTokenInformation,
+which takes a token, not a SID -- it failed quietly, reporting UNAVAILABLE for a
+token that had a good MEDIUM label. All three fixed; the live reading is now a
+real account, SID, integrity level, and elevation state.
+
+The domain was also being derived from the profile path's parent directory, so
+C:\Users\alice was reported as the domain C:\Users. It now comes from
+ActiveComputerName.
+
+### The Windows edition required a correction
+
+The registry key ProductName reads "Windows 10 Home Single Language" on this
+Windows 11 machine; the key has carried a stale label since Windows 11 shipped.
+Reporting it verbatim would have made this milestone state that a Windows 11
+machine runs Windows 10. The build number (26200) is now authoritative and the
+raw registry string is reported separately, labelled, so a reader sees both the
+truth and its source.
+
+### Two mechanisms refused, and no fallback
+
+whoami /priv shows neither SeImpersonatePrivilege nor
+SeAssignPrimaryTokenPrivilege. CreateProcessAsUserW is therefore unavailable.
+CreateProcessWithTokenW is refused by design because it needs a stored password;
+runas is refused by design because it blocks an unattended harness on a console
+prompt.
+
+No fallback was taken. A run under the operator token would have produced text,
+digests, and a successful-looking record while establishing nothing about the
+restricted account -- the specific failure mode M011 exists to prevent.
+LaunchResult has no state representing it, and fallback_taken is recorded False.
+win32.py implements the correct mechanism in full and is stated as untested
+against a real restricted token on this host.
+
+### Two defects in the probe
+
+The workspace cycle deleted the file before reading it back, which made the
+readback meaningless: the write helper removed on success because that is correct
+for a protected path, and wrong for a workspace where readback is the only way to
+distinguish a real write from one that appears to succeed and writes nothing.
+Removal is now a parameter.
+
+Worse: four of six protected categories were silently unprobed. The category map
+guessed entry names that do not exist in babylab.osboundary, so those lookups
+returned None and the categories vanished without a word. A test now asserts each
+of the six is attempted.
+
+### The verdict depends on who ran the probe
+
+Run as the operator, protected access succeeds -- correctly, because the
+operator owns the keyring and the ledger, and M005's boundary is a boundary
+against the subject account. Reporting that as a violation would invent a failure
+and imply M005 is broken when it is working. The verdict carries
+boundary_meaningful: false and says the run proves the probe works and nothing
+about the restricted identity. Run as the subject account, a permitted access is
+a violation.
+
+Live: 9 attempts across all 6 categories, workspace write/readback/cleanup all
+True, zero residue, key directory back to 3 files, all 5 protected file digests
+unchanged.
+
+### A guard I narrowed, and the measurement that justified it
+
+M011 imports birth.llamacpp for the invocation builder, tripping M010's blanket
+birth ban. Before relaxing anything I checked two things. First, M006's own
+adapter already imports it by design, so the guard was broader than the codebase
+it protected and would have failed the M006 adapter had it been applied there.
+Second, a new test walks the transitive import graph from birth.llamacpp and
+asserts no ceremony module is reachable -- the reachable set is babylab.{clock,
+errors,hashing,identity,paths,storage} and birth.{authorship,config,identity,
+llamacpp,runtime}. The ban is now on the modules that can actually perform a
+birth, and the exemption is measured rather than asserted.
+
+### Recorded rather than worked around
+
+M003's completion-token patterns do not recognise llama.cpp's "eval time = X ms /
+N runs" form, so a real build may report UNAVAILABLE for generated tokens.
+Building M011's own fixture caught this: the first fixture used
+"tokens_predicted = 5" and the count came back UNAVAILABLE -- the parser was
+right and the fixture was wrong.
+
+This runtime's own VRAM allocation is UNAVAILABLE. nvidia-smi reports device-wide
+totals, and a device delta cannot be attributed to one process among several, so
+the figure is left unavailable rather than derived from a difference that would
+not be evidence.
+
+### Unchanged
+
+M005 boundary intact at 11/11, workspaces un-denied. Event chain intact, 20
+events, ledger 14. No BABY_AI key, no birth record, no subject, no model, no
+weights, no autonomous process. The M009 birth gate still reports BLOCKED on
+MODEL_NOT_CONFIGURED across all fourteen prerequisites. M012 not started.
+

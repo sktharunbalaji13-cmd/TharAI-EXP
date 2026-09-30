@@ -61,6 +61,7 @@ class ObservatorySession:
         self.store = EventStore(self.paths.event_store, clock=self.clock)
         self._birth = self._read_birth()
         self._foundation = self._read_foundation()
+        self._runtime_verification = self._read_runtime_verification()
         self.registry = SubjectRegistry(self.keyring, self._birth)
         self.reader = ObservatoryReader(store=self.store, clock=self.clock)
         self.attributor = Attributor(
@@ -126,6 +127,37 @@ class ObservatorySession:
                 },
             }
 
+    def _read_runtime_verification(self) -> dict[str, Any]:
+        """The M011 runtime-verification panel, without executing anything.
+
+        Uses :func:`foundation.m011_status.capability_only`, which reads the
+        privilege state and the account and stops there. It deliberately does
+        **not** call ``verification.verify()``: that would launch a process and
+        hash a multi-gigabyte artifact every time the display was polled, and a
+        view whose refresh rate depends on how much work the thing it observes
+        does is not a view.
+
+        The full verification is a command, and the panel reports the host's
+        capability to run it.
+        """
+        from babylab.errors import BabyLabError
+
+        try:
+            from foundation.m011_status import capability_only
+
+            return capability_only(self.paths.root)
+        except (BabyLabError, OSError, ValueError) as exc:
+            return {
+                "inference_mode": "NOT_TESTABLE",
+                "inference_outcome": "NOT_RUN",
+                "restricted_account_runtime": "NOT_TESTABLE",
+                "restricted_account_reason": (
+                    f"the runtime-verification panel could not be read: {exc}"
+                ),
+                "subject": "NONE",
+                "birth": "NOT_PERFORMED",
+            }
+
     # -- updating ---------------------------------------------------------
     def update(self) -> ObservatorySnapshot:
         """Consume new events and return the resulting snapshot.
@@ -157,6 +189,7 @@ class ObservatorySession:
             recent_attributions=self._recent[-10:],
             birth=self._birth,
             foundation=self._foundation,
+            runtime_verification=self._runtime_verification,
         )
 
     def render(self, options: RenderOptions | None = None) -> str:
