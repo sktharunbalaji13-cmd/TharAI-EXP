@@ -2157,3 +2157,97 @@ asserted the staging directory did not exist, which M015 makes false by design.
 Unchanged: all 14 M005 deny ACEs intact, no birth, no privilege/group/task/service
 change. The .agents/, .claude/, .claude-flow/, .swarm/, .mcp.json, CLAUDE.md and
 the .gitignore edit remain untracked and untouched, per instruction.
+
+## M016 - subject-account native runtime launch: NOT_TESTABLE
+
+Milestone: M016 (subject-account launch and boundary proof)
+Status: SUBJECT_PROCESS_NOT_TESTABLE
+Subject process launched: NO. Runtime selected: NO. Runtime staged: NO.
+
+This milestone set out to answer one question -- can an explicitly
+human-selected native runtime execute as BABY_AI_TEST while the OS prevents that
+process from modifying the staged tree and protected evidence. The answer on this
+host is that it cannot be tested, and the milestone's value is the precise reason.
+
+The operator token was read directly, not assumed: five privileges held
+(SeChangeNotifyPrivilege, SeIncreaseWorkingSetPrivilege, SeShutdownPrivilege,
+SeTimeZonePrivilege, SeUndockPrivilege), and both SeImpersonatePrivilege and
+SeAssignPrimaryTokenPrivilege absent. Elevation was read from group attributes
+rather than the presence of an Administrators entry, because an unelevated token
+carries that group as deny-only and its presence proves nothing.
+
+Mechanism ledger. CreateProcessWithLogonW needs SeImpersonatePrivilege and is
+therefore unavailable -- and it is the mechanism that would otherwise have
+satisfied the milestone, since it needs no stored password. CreateProcessAsUser
+and DuplicateTokenEx need SeAssignPrimaryTokenPrivilege and are likewise
+unavailable. Scheduled-task registration was actually attempted and refused with
+"Access is denied" for this non-elevated operator; supplying /RP would persist the
+password, which the milestone forbids. Services were rejected by design: a service
+runs as its own identity, not an interactive user, and needs stored credentials.
+runas.exe and Start-Process -Credential need an interactive credential prompt and
+so cannot be driven non-interactively. WSL and docker exec were rejected by
+design because they produce a Linux or container identity, which would answer a
+different question. automatable_mechanisms_remaining is empty, and that is the
+finding rather than a gap in the search.
+
+No credential was requested, supplied, stored, or logged. The account's
+PasswordRequired=False is recorded as a host fact meaning an empty password would
+satisfy logon; it was deliberately neither exploited nor changed.
+
+A native C# probe was built and verified rather than substituting CPython, and it
+was not staged in subject_runtime. It compiles with the C# compiler already in
+PowerShell 5.1 via Add-Type, so no toolchain was installed. It reports user_sid,
+account_name, integrity_level, groups and privileges read from its own process
+token via OpenProcessToken and GetTokenInformation, never from arguments. Its
+cross-check against whoami /priv agrees on all five held privileges.
+
+Running it as the operator, who holds (F) on subject_runtime, was the positive
+control, and it exposed six defects that would each have produced a false result:
+
+- LookupPrivilegeName was declared with two parameters instead of four, so the
+  output-buffer and length arguments were never passed and the call read an
+  uninitialised register, crashing with an access violation inside advapi32.
+- A hand-rolled LookupAccountSid crashed on its buffer-sizing pass; replaced with
+  System.Security.Principal, which wraps the same Win32 call correctly, because a
+  probe that cannot run reports nothing at all.
+- The mandatory-label RID was read byte-by-byte, walking past the end of the SID,
+  which reported UNPROTECTED for a Medium-integrity token. It is the final DWORD
+  of the single sub-authority.
+- OS_DENIED was returned for winerror 2 and 183. With no staged runtime an empty
+  path resolved to the current directory and produced a genuine access-denied
+  unrelated to any ACL, so "nothing was staged" could have masqueraded as "the OS
+  protected the runtime". Path errors are now PATH_ERROR, and staged-file
+  operations report NOT_TESTABLE when no runtime is staged.
+- Destructive operations shared one file, so a real rename denial was masked by
+  the earlier delete; each operation now targets its own copy.
+- The rename target reused its source name, hitting winerror 183, a collision
+  rather than a denial.
+
+The probe now reports OS_ALLOWED for all nine filesystem operations as the
+operator, which is the evidence that it is not hardwired to report denial. It
+distinguishes OS_ALLOWED, OS_DENIED, PATH_ERROR and NOT_TESTABLE, and OS_DENIED
+means winerror 5 and nothing else.
+
+Every subject-side outcome remains untested because no subject process exists:
+identity, read/execute, write, delete, rename/replace, child creation, ACL
+modification, and workspace access. The M015 boundary is still STAGING_VERIFIED,
+but that remains operator-side ACL observation exactly as M015 stated. The
+empirical bridge between "the ACL design is correct" and "the subject process runs
+inside it" is still missing; characterising that gap is this milestone's result.
+
+Regression: M005's 13 protected paths present and readable (5 digests),
+unchanged. M015 boundary still verifies. baby_workspace still writable. Full
+portable suite 1861 passed / 2 warnings / 749 subtests, up from 1825 with 36 new
+M016 tests. Host security 15 failed / 10 passed / 13 subtests, unchanged from
+baseline and still all NOT_TESTABLE for the same impersonation reason. No birth,
+no model, no network claim, no signing key.
+
+Prerequisites for an M014 rerun, in order: a human runtime declaration naming
+source_path and selected_by; staging through M015's deployment path with digest
+equality verified; launch capability via runas.exe at an interactive session, or
+by granting SeImpersonatePrivilege to the operator -- which grants nothing to
+BABY_AI_TEST and touches no ACL, but is still a privilege change and should be a
+deliberate decision; and finally a probe run as the subject before any
+SUBJECT_PROCESS_VERIFIED claim is recorded.
+
+Unrelated untracked tooling and the pre-existing .gitignore edit remain untouched.

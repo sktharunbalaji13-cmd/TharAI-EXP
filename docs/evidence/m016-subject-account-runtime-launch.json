@@ -1,0 +1,143 @@
+{
+  "schema": "babylab/m016-subject-account-runtime-launch/v1",
+  "milestone": "M016",
+  "subject_process_status": "SUBJECT_PROCESS_NOT_TESTABLE",
+  "subject_process_launched": false,
+  "author": "operator (Claude Code session); no subject participation",
+  "runtime_selection_status": "RUNTIME_NOT_SELECTED",
+  "runtime_source": null,
+  "runtime_staged": false,
+  "model_status": "none selected",
+  "birth_status": "M014 remains BLOCKED; M016 does not change it",
+  "launch": {
+    "operator_privileges_held": [
+      "SeChangeNotifyPrivilege",
+      "SeIncreaseWorkingSetPrivilege",
+      "SeShutdownPrivilege",
+      "SeTimeZonePrivilege",
+      "SeUndockPrivilege"
+    ],
+    "privileges_missing": [
+      "SeImpersonatePrivilege",
+      "SeAssignPrimaryTokenPrivilege"
+    ],
+    "operator_elevated": false,
+    "mechanisms": [
+      {
+        "name": "CreateProcessWithLogonW",
+        "automatable": true,
+        "finding": "UNAVAILABLE: privilege absent from the operator token. This is the mechanism that would otherwise satisfy the milestone,"
+      },
+      {
+        "name": "CreateProcessAsUser / DuplicateTokenEx",
+        "automatable": true,
+        "finding": "UNAVAILABLE: privilege absent; no duplicated token to reuse."
+      },
+      {
+        "name": "Scheduled Task (schtasks /create /ru BABY_AI_TEST)",
+        "automatable": false,
+        "finding": "BLOCKED: registration attempted and refused with 'Access is denied' for this non-elevated operator. Supplying /RP would "
+      },
+      {
+        "name": "Windows service (sc.exe create)",
+        "automatable": false,
+        "finding": "REJECTED BY DESIGN: a service runs as its own identity, not as an interactive user, and would require persisting the pas"
+      },
+      {
+        "name": "runas.exe",
+        "automatable": false,
+        "finding": "INTERACTIVE_ONLY: the binary exists and is the one mechanism that does not need stored credentials, but it cannot be dri"
+      },
+      {
+        "name": "Start-Process -Credential",
+        "automatable": false,
+        "finding": "INTERACTIVE_ONLY: same credential-prompt constraint as runas. The prior M014 attempt also failed for an unrelated reason"
+      },
+      {
+        "name": "WSL / docker exec",
+        "automatable": true,
+        "finding": "REJECTED BY DESIGN: these produce a Linux or container identity, not a Windows process token for BABY_AI_TEST. Substitut"
+      }
+    ],
+    "automatable_remaining": [],
+    "interactive_only": [
+      "Scheduled Task (schtasks /create /ru BABY_AI_TEST)",
+      "Windows service (sc.exe create)",
+      "runas.exe",
+      "Start-Process -Credential"
+    ],
+    "rejected_by_design": [
+      "Windows service (sc.exe create)",
+      "WSL / docker exec"
+    ],
+    "blockers": [
+      "SeImpersonatePrivilege is absent from the operator token",
+      "SeAssignPrimaryTokenPrivilege is absent from the operator token",
+      "the operator token is not elevated, so mechanisms that require elevation (scheduled-task registration, service install) are refused"
+    ]
+  },
+  "credential_handling": {
+    "password_read": false,
+    "password_stored": false,
+    "password_in_arguments": false,
+    "password_in_environment": false,
+    "password_in_repository": false,
+    "password_logged": false,
+    "policy": "no credential was requested, supplied, stored, or logged. Mechanisms requiring one are marked INTERACTIVE_ONLY and left for a human at an interactive session."
+  },
+  "account": {
+    "account": "THARUNBALAJI-LA\\BABY_AI_TEST",
+    "observed": {
+      "Name": "BABY_AI_TEST",
+      "Enabled": true,
+      "PasswordRequired": false,
+      "LastLogon": "/Date(1790766820506)/",
+      "UserMayChangePassword": true
+    },
+    "password_value_read": false,
+    "password_stored_anywhere": false,
+    "note": "metadata only; the password value is never read, logged, or stored. PasswordRequired=False means an empty password would satisfy logon, which is a security finding about the host and not something this milestone exploits or changes."
+  },
+  "probe": {
+    "schema": "babylab/m016-probe/v1",
+    "source": "C:\\dev\\TharAI-EXP\\foundation\\subject_probe.cs",
+    "source_present": true,
+    "language": "csharp",
+    "compiler": "PowerShell 5.1 Add-Type (no toolchain installed)",
+    "staged_in_subject_runtime": false,
+    "python_used_as_subject_runtime": false,
+    "status": "SUBJECT_PROCESS_NOT_TESTABLE",
+    "reason": "probe source exists but no compiled probe is present; build it with Add-Type before launching. NOT_TESTABLE rather than FAILED, because nothing has been attempted as the subject yet."
+  },
+  "probe_defects_found_as_operator": [
+    "LookupPrivilegeName declared with 2 params instead of 4 -> access violation in advapi32",
+    "hand-rolled LookupAccountSid crashed on buffer sizing -> replaced with Security.Principal",
+    "mandatory-label RID read byte-by-byte past the SID end -> reported UNPROTECTED for a Medium token",
+    "OS_DENIED returned for winerror 2 and 183 -> a missing file looked like an ACL denial",
+    "destructive operations shared one file -> a real rename denial masked by an earlier delete",
+    "rename target reused the source name -> winerror 183 collision"
+  ],
+  "not_tested": [
+    "subject_process_identity",
+    "subject_read_execute",
+    "subject_write_denial",
+    "subject_delete_denial",
+    "subject_rename_replace",
+    "subject_child_creation",
+    "subject_acl_modification",
+    "workspace_as_subject"
+  ],
+  "m015_boundary_still_verified": "STAGING_VERIFIED",
+  "m005_protected_paths": 13,
+  "network_status": "not claimed; no firewall rule was added and no isolation is asserted",
+  "tests": {
+    "m016": "36 passed",
+    "full_portable": "1861 passed, 2 warnings, 749 subtests",
+    "host_security": "15 failed, 10 passed, 13 subtests, all NOT_TESTABLE"
+  },
+  "documentation": {
+    "path": "docs\\m016-subject-account-runtime-launch.md",
+    "sha256": "f520c28f9adc4fab165cce1812d94445c64c8d6e080e22780c2dda98541f69f4"
+  },
+  "written_at": "2026-09-30T13:18:16.168700+00:00"
+}
