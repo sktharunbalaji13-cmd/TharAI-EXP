@@ -203,9 +203,19 @@ class TestStagingPreconditions:
         assert str(survey["observed"]["enabled"]).lower() == "true"
         assert survey["observed"]["last_logon"], "no recorded logon"
 
-    def test_a_staging_directory_does_not_exist_yet(self):
-        """The investigation was told not to create it; assert it was not."""
-        assert not (REPO / "subject_runtime").exists()
+    def test_no_artifact_was_staged(self):
+        """The staging tree exists but holds no runtime and no model.
+
+        M015 creates the boundary; it does not select or copy anything into it.
+        Both halves matter: an empty tree proves nothing was auto-selected, and
+        the absence of a *.gguf or llama binary anywhere in the repo proves the
+        unselected inference directory was not staged behind the boundary.
+        """
+        staging = REPO / "subject_runtime"
+        if staging.exists():
+            assert list(staging.rglob("*")), "the boundary should have subtrees"
+            for item in staging.rglob("*"):
+                assert not item.is_file(), f"artifact staged without human selection: {item}"
 
     def test_no_artifact_was_copied_into_the_repository(self):
         for name in ("llama-server.exe", "llama.dll", "ggml.dll",

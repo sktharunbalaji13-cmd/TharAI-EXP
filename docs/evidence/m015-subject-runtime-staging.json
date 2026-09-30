@@ -1,0 +1,148 @@
+{
+  "schema": "babylab/m015-subject-runtime-staging/v1",
+  "milestone": "M015",
+  "status": "STAGING_VERIFIED",
+  "enforcement": "NOT_TESTABLE",
+  "author": "operator (Claude Code session), no subject participation",
+  "boundary": {
+    "staging_root": "C:\\dev\\TharAI-EXP\\subject_runtime",
+    "inherited_authenticated_users_modify_absent_everywhere": true,
+    "subject_rights_exact_everywhere": true,
+    "subject_deny_backstop_present_everywhere": true,
+    "subject_is_not_owner_everywhere": true,
+    "per_path": [
+      {
+        "label": "root",
+        "path": "C:\\dev\\TharAI-EXP\\subject_runtime",
+        "subject_permissions": [
+          "R"
+        ],
+        "expected": "R",
+        "exact": true,
+        "may_write": false,
+        "deny_backstop": true,
+        "owner": "THARUNBALAJI-LA\\k.tharun balaji",
+        "acl": [
+          "THARUNBALAJI-LA\\BABY_AI_TEST:(OI)(CI)(DENY)(W,D,DC)",
+          "THARUNBALAJI-LA\\BABY_AI_TEST:(OI)(CI)(DENY)(W,D,DC)",
+          "THARUNBALAJI-LA\\BABY_AI_TEST:(OI)(CI)(R)",
+          "BUILTIN\\Administrators:(OI)(CI)(F)",
+          "NT AUTHORITY\\SYSTEM:(OI)(CI)(F)",
+          "THARUNBALAJI-LA\\k.tharun balaji:(OI)(CI)(F)"
+        ]
+      },
+      {
+        "label": "runtime",
+        "path": "C:\\dev\\TharAI-EXP\\subject_runtime\\runtime",
+        "subject_permissions": [
+          "R",
+          "X"
+        ],
+        "expected": "RX",
+        "exact": true,
+        "may_write": false,
+        "deny_backstop": true,
+        "owner": "THARUNBALAJI-LA\\k.tharun balaji",
+        "acl": [
+          "THARUNBALAJI-LA\\BABY_AI_TEST:(OI)(CI)(DENY)(W,D,DC)",
+          "THARUNBALAJI-LA\\BABY_AI_TEST:(OI)(CI)(DENY)(W,D,DC)",
+          "THARUNBALAJI-LA\\BABY_AI_TEST:(OI)(CI)(RX)",
+          "BUILTIN\\Administrators:(OI)(CI)(F)",
+          "NT AUTHORITY\\SYSTEM:(OI)(CI)(F)",
+          "THARUNBALAJI-LA\\k.tharun balaji:(OI)(CI)(F)"
+        ]
+      },
+      {
+        "label": "model",
+        "path": "C:\\dev\\TharAI-EXP\\subject_runtime\\model",
+        "subject_permissions": [
+          "R"
+        ],
+        "expected": "R",
+        "exact": true,
+        "may_write": false,
+        "deny_backstop": true,
+        "owner": "THARUNBALAJI-LA\\k.tharun balaji",
+        "acl": [
+          "THARUNBALAJI-LA\\BABY_AI_TEST:(OI)(CI)(DENY)(W,D,DC)",
+          "THARUNBALAJI-LA\\BABY_AI_TEST:(OI)(CI)(DENY)(W,D,DC)",
+          "THARUNBALAJI-LA\\BABY_AI_TEST:(OI)(CI)(R)",
+          "BUILTIN\\Administrators:(OI)(CI)(F)",
+          "NT AUTHORITY\\SYSTEM:(OI)(CI)(F)",
+          "THARUNBALAJI-LA\\k.tharun balaji:(OI)(CI)(F)"
+        ]
+      },
+      {
+        "label": "config",
+        "path": "C:\\dev\\TharAI-EXP\\subject_runtime\\config",
+        "subject_permissions": [
+          "R"
+        ],
+        "expected": "R",
+        "exact": true,
+        "may_write": false,
+        "deny_backstop": true,
+        "owner": "THARUNBALAJI-LA\\k.tharun balaji",
+        "acl": [
+          "THARUNBALAJI-LA\\BABY_AI_TEST:(OI)(CI)(DENY)(W,D,DC)",
+          "THARUNBALAJI-LA\\BABY_AI_TEST:(OI)(CI)(DENY)(W,D,DC)",
+          "THARUNBALAJI-LA\\BABY_AI_TEST:(OI)(CI)(R)",
+          "BUILTIN\\Administrators:(OI)(CI)(F)",
+          "NT AUTHORITY\\SYSTEM:(OI)(CI)(F)",
+          "THARUNBALAJI-LA\\k.tharun balaji:(OI)(CI)(F)"
+        ]
+      }
+    ]
+  },
+  "artifact_staging": {
+    "anything_staged": false,
+    "inventory": {
+      "runtime": {
+        "present": true,
+        "files": []
+      },
+      "model": {
+        "present": true,
+        "files": []
+      },
+      "config": {
+        "present": true,
+        "files": []
+      }
+    },
+    "model_selected": false,
+    "runtime_selected": false
+  },
+  "tamper_detection_verified": [
+    "grant (M) on model",
+    "grant (F) on runtime",
+    "grant (W) on config",
+    "grant (WD) on config",
+    "grant (DC) on model",
+    "grant (RX) on model",
+    "remove deny from model"
+  ],
+  "not_claimed": {
+    "subject_execution": "NOT_TESTABLE: no SeImpersonatePrivilege / SeAssignPrimaryTokenPrivilege",
+    "network": "filesystem ACLs do not establish LOCAL_ONLY_NO_FETCH. A staged runtime may still hold network capability; network isolation is a separate gate and is NOT_TESTABLE here.",
+    "confidentiality": "the subject must read the model to run it; this boundary provides integrity, not confidentiality",
+    "birth": "M014 remains BLOCKED; M015 does not change it"
+  },
+  "host_findings": [
+    "icacls prints no owner marker; ownership read via Get-Acl, unreadable owner is unverified",
+    "dir /q truncates owner to 8.3 and cannot be compared reliably",
+    "Windows refused /setowner BABY_AI_TEST without SeRestorePrivilege",
+    "COMPUTERNAME\\\\SYSTEM does not resolve; NT AUTHORITY\\\\SYSTEM used instead",
+    "principal names contain spaces, so ACL parsing cannot split on whitespace"
+  ],
+  "tests": {
+    "staging_boundary": "24 passed",
+    "full_portable": "1825 passed, 2 warnings, 749 subtests passed",
+    "host_security": "15 failed, 10 passed, 13 subtests passed; all NOT_TESTABLE"
+  },
+  "documentation": {
+    "path": "docs\\m015-subject-runtime-staging.md",
+    "sha256": "65b7c2e36a93bcb9eb7dca8682a76b461cfb71a4da343f2679e2dc631c91742c"
+  },
+  "written_at": "2026-09-30T12:40:48.880354+00:00"
+}

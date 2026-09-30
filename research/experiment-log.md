@@ -2095,3 +2095,65 @@ at stage declaration.
 
 The .agents/, .claude/, .claude-flow/, .swarm/, .mcp.json, CLAUDE.md and the
 .gitignore edit remain untracked and untouched, per instruction.
+
+## M015 - subject runtime staging boundary implemented
+
+Milestone: M015 (subject runtime staging boundary)
+Status: STAGING_VERIFIED (ACL observation only)
+Enforcement: NOT_TESTABLE - no BABY_AI_TEST process was run.
+
+Created C:\dev\TharAI-EXP\subject_runtime\ with runtime\, model\ and config\,
+and applied an explicit allow-list ACL to all four paths. Nothing was copied into
+it. No model or runtime was selected.
+
+The parent's `Authenticated Users:(I)(M)` was the reason this tree needed an
+explicit boundary: BABY_AI_TEST is authenticated and has logged on, so it
+inherited full write from C:\dev\TharAI-EXP. Inheritance is removed on every path
+and the verifier asserts no Authenticated Users entry remains.
+
+Resulting subject rights, differing per subtree on purpose: runtime\ RX (a
+program must load), model\ R and config\ R (data must not be executable), with a
+DENY(W,D,DC,WD,AD) backstop on all four paths. Operator, NT AUTHORITY\SYSTEM and
+BUILTIN\Administrators hold (OI)(CI)(F). Operator owns all four paths.
+
+Four defects were found and fixed while implementing, each of which would have
+made the verifier report success incorrectly or leave the tree unprotected:
+
+1. `COMPUTERNAME\SYSTEM` does not resolve, so the SYSTEM grant silently failed
+   and the tree had no system access for recovery. Now NT AUTHORITY\SYSTEM.
+2. Applying grants to the root with /T stamped a duplicate explicit + inherited
+   ACE set onto every child. Now granted at the root and inherited down, then
+   each subtree is reset and re-granted exactly.
+3. Granting a single R/RX label over the whole tree gave the runtime no execute
+   and would have given the model execute. Now per-subtree.
+4. A substring check such as `"R" in "(OI)(CI)(R)(OI)(CI)(WD)"` is true, so an
+   extra WriteDAC ACE on top of a correct grant was invisible. Permissions are
+   now compared as expanded sets, and the deny is a separate ACE.
+
+The verifier's own failure modes were tested by tampering with clean disposable
+trees: grant (M) on model, (F) on runtime, (W) on config, (WD) on config, (DC) on
+model, (RX) on model, and removing the deny from model. All seven flip the
+verdict to STAGING_BLOCKED. These are locked in as tests.
+
+Host facts established: icacls prints no owner marker at all, so ownership is read
+via Get-Acl and an unreadable owner is treated as unverified rather than as
+"not the subject"; dir /q truncates the owner to 8.3 and cannot be compared
+reliably; Windows refused /setowner BABY_AI_TEST for lack of SeRestorePrivilege,
+so ownership stayed with the operator and the test documents the refusal rather
+than claiming a transfer; ACL parsing cannot split on whitespace because
+principal names contain spaces (THARUNBALAJI-LA\k.tharun balaji).
+
+Not claimed: subject-side enforcement (NOT_TESTABLE, no SeImpersonatePrivilege
+or SeAssignPrimaryTokenPrivilege, and the operator Python is itself inaccessible
+to the subject); network isolation (llama-server.exe accepts --model-url);
+confidentiality (integrity only); any artifact selection; any birth. M014 remains
+BLOCKED.
+
+Tests: 24 new staging-boundary tests. Portable suite 1825 passed / 2 warnings /
+749 subtests. Host security 15 failed / 10 passed / 13 subtests, all NOT_TESTABLE,
+unchanged from baseline. One design-phase precondition test was updated: it
+asserted the staging directory did not exist, which M015 makes false by design.
+
+Unchanged: all 14 M005 deny ACEs intact, no birth, no privilege/group/task/service
+change. The .agents/, .claude/, .claude-flow/, .swarm/, .mcp.json, CLAUDE.md and
+the .gitignore edit remain untracked and untouched, per instruction.
