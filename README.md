@@ -2,24 +2,49 @@
 
 Research instrumentation for observing a self-hosted AI system.
 
-**Milestones 001 and 002 delivered the laboratory and its instruments only.**
-**Milestone 003 adds the birth ceremony and the subject it can create.**
+**Milestones 001–009 are delivered. There is still no AI here, and the laboratory
+refuses to pretend otherwise.**
 
-There is still no AI here. Milestone 003 does not create a mind, and says so in
-the code, the schema, and the display. What it adds is the ability for a
-*human-configured* model to be born as a single, immutable, signed subject, and
-for that fact to be reported truthfully. No model, agent, memory, goals, or
-self-modification exists; no stage, curriculum, or emotional state is claimed;
-and no capability is implemented. The absence is deliberate: an instrument that
-contains the thing it measures cannot be trusted to report on it. See
-[docs/architecture.md](docs/architecture.md),
-[docs/birth-architecture.md](docs/birth-architecture.md), and
-[docs/decisions/ADR-004-no-event-taxonomy.md](docs/decisions/ADR-004-no-event-taxonomy.md).
+```
+M009 STATUS           COMPLETE — machinery built, blocking proven
+BIRTH SAFETY GATE     BLOCKED (MODEL_NOT_CONFIGURED)
+REAL BIRTH STATUS     NOT_PERFORMED
+SUBJECT               none attached
+BABY_AI KEY           not created
+FOUNDATION MODEL      none configured
+AUTONOMOUS PROCESS    none running
+```
 
-**No model has been installed and no ceremony has been run against a real
-model.** `python -m birth.real_model_test` reports `NOT_CONFIGURED` and exits
+What exists is the complete transition machinery: a gated birth ceremony, a
+deterministic environment, a subject architecture, and a runtime contract layer
+for a model that has not been installed. What does not exist is a mind.
+
+The absence is deliberate. Everything in this project is an *observation
+instrument*, and an instrument that also contains the thing it measures cannot be
+trusted to report on it. So there is no simulated subject presented as real, no
+placeholder agent, and no capability quietly reported as available. When the
+Milestone-009 birth ceremony was run, its gate **blocked** on the missing model
+and the laboratory ended with no subject — which was the successful outcome, and
+the only honest one available.
+
+## Milestones
+
+| Milestone | Delivers | State |
+| --- | --- | --- |
+| [001](docs/architecture.md) | Instrumentation: event log, provenance ledger, read-only observer, separated control process | complete |
+| [002](docs/observatory.md) | The read-only Cognitive State Observatory | complete |
+| [003](docs/birth-architecture.md) | The birth ceremony, model identity verification, truthful display | complete |
+| [004](docs/m004-trust-boundary.md) | The trust boundary, measured instead of asserted | complete |
+| [005](docs/m005-os-isolation.md) | The OS boundary, applied and verified by human cross-process execution | complete |
+| [006](docs/m006-runtime.md) | The runtime layer: contracts, hardware probe, governor, llama.cpp adapter | complete, no model |
+| [007](docs/m007-environment.md) | The environment and interaction substrate, deterministic and replayable | complete, inert |
+| [008](docs/m008-subject.md) | The subject architecture and the first-experience boundary | complete, no subject |
+| [009](docs/m009-birth.md) | The gated birth ceremony and first controlled experience | complete, `REAL_BIRTH = NOT_PERFORMED` |
+
+**No model has been installed and no ceremony has been run against real
+weights.** `python -m birth.real_model_test` reports `NOT_CONFIGURED` and exits
 non-zero, which is the correct result on a fresh installation. The laboratory
-never chooses a foundation model for you.
+never chooses a foundation model for you: no search, no fallback, no download.
 
 ## Requirements
 
@@ -40,16 +65,19 @@ python -m birth.cli status
 
 | Component | Purpose |
 | --- | --- |
-| `babylab/` | Shared foundations: paths, hashing, storage and locks, clock, identity, trust policy |
+| `babylab/` | Shared foundations: paths, hashing, storage and locks, clock, identity, trust policy, OS boundary |
+| `babylab/runtime/` | Runtime contracts, hardware probe, resource governor, llama.cpp adapter (Milestone 006) |
 | `events/` | Append-only, hash-chained event log |
 | `provenance/` | HMAC-signed ledger of who changed what, with sealed heads |
 | `observer/` | Read-only terminal view of the event stream |
 | `observatory/` | Read-only view of what a subject has reported about itself |
+| `environment/` | Typed actions, validated consequences, deterministic replayable state (Milestone 007) |
+| `subject/` | Subject identity, lifecycle, hash-chained state, first-experience boundary, in-memory harness (Milestone 008) |
 | `control/` | Separate privileged process: lifecycle, snapshots, HMAC-authenticated loopback control |
 | `human_control/` | Operator area: config, baseline, records, snapshots, seals, keys |
-| `birth/` | The birth ceremony, model identity verification, and read-only birth status |
+| `birth/` | The birth ceremony, its safety gate, key custody, audit and replay, and read-only status |
 | `baby_workspace/` | Reserved for the subject |
-| `var/` | Runtime data: `var/events/`, `var/provenance/`, `var/models/` |
+| `var/` | Runtime data: `var/events/`, `var/provenance/`, `var/models/`, `var/measurements/` |
 
 Data, secrets, and model weights are not in Git; code and documentation are. See
 [docs/git-integration.md](docs/git-integration.md).
@@ -174,21 +202,42 @@ Read this before trusting any data this repository produces.
 | Tier | Boundary | Status |
 | --- | --- | --- |
 | 1 | Application policy (`PathPolicy`) | **Active and tested** |
-| 2 | OS file permissions (NTFS ACLs) | **Scripted, not applied, not verified** |
+| 2 | OS file permissions (NTFS ACLs) | **Applied and verified** — 11/11 denials, human cross-process |
 | 3 | OS account isolation / container | **Not implemented** |
 
-Only tier 1 is in force, and it is the weakest of the three: it catches
-accidents and attributes privileged writes, but a subject sharing the Windows
-user can bypass it entirely. Tier 2 needs an elevated session and a second
-account, neither of which was available during development
-(`IsAdmin` → `False`, `net user` → `Access is denied`).
+Tier 2 was established and empirically verified in Milestone 005. A
+non-administrator account, `THARUNBALAJI-LA\BABY_AI_TEST` (Medium integrity), is
+denied 11 protected paths and holds no ACE on either subject workspace. Because
+the development process cannot hold `SeImpersonatePrivilege`, the denials were
+proven by a human operator running probes in a separate process, with raw output
+recorded in
+[docs/evidence/m005-final-verification.json](docs/evidence/m005-final-verification.json):
+
+| Probe run as `BABY_AI_TEST` | Result |
+| --- | --- |
+| read `var/provenance/m005_probe.txt` | `Access is denied.` |
+| read `human_control/security/control.token.bak` | `Access is denied.` |
+| create/read/delete `baby_workspace/m005_probe.txt` | succeeded |
+
+The third probe matters as much as the two denials: a boundary that refused
+everything would prove nothing.
+
+Building that boundary surfaced two real defects, both fixed and both retained in
+the evidence file: a leaf deny that left parent directories writable, and an ACL
+recovery path that failed *open* rather than closed. Details in
+[docs/m005-os-isolation.md](docs/m005-os-isolation.md).
+
+**Two limitations are recorded rather than papered over.** Tier 2 binds a file
+boundary to an *account*, not to a running process — nothing executes as
+`BABY_AI_TEST` yet, because tier 3 does not exist — and a root-level
+`FILE_DELETE_CHILD` capability on the private key directory's parent is not
+denied by an explicit ACE. The full threat table is in
+[docs/security-model.md](docs/security-model.md).
 
 Provenance signing uses HMAC-SHA256, which is symmetric: the operator who can
 verify the ledger can also forge entries. Ed25519 is deferred by decision, to be
 adopted before anyone outside this machine verifies anything. See
 [ADR-003](docs/decisions/ADR-003-provenance-signing.md).
-
-Details and the full threat table: [docs/security-model.md](docs/security-model.md).
 
 ## Documentation
 
@@ -208,6 +257,12 @@ Details and the full threat table: [docs/security-model.md](docs/security-model.
 | [windows-integration.md](docs/windows-integration.md) | Locking, encoding, filenames, restricted accounts |
 | [git-integration.md](docs/git-integration.md) | What is tracked, and why commits are not identity |
 | [operations.md](docs/operations.md) | Day-to-day use, research workflow, troubleshooting |
+| [m004-trust-boundary.md](docs/m004-trust-boundary.md) | Measuring the trust boundary instead of asserting it |
+| [m005-os-isolation.md](docs/m005-os-isolation.md) | Building and proving the OS boundary, and the two defects it found |
+| [m006-runtime.md](docs/m006-runtime.md) | The runtime layer: what a substrate must declare before it can be used |
+| [m007-environment.md](docs/m007-environment.md) | Actions, consequences, validation, and why timestamps are not state |
+| [m008-subject.md](docs/m008-subject.md) | Subject identity, lifecycle, and the first-experience boundary |
+| [m009-birth.md](docs/m009-birth.md) | The gated birth ceremony, T_birth, custody, audit and replay |
 | [experiment-log.md](research/experiment-log.md) | Dated research journal |
 | [decisions/](docs/decisions/) | ADRs, including the ones still open |
 
@@ -240,6 +295,13 @@ Details and the full threat table: [docs/security-model.md](docs/security-model.
 9. **Installed is not usable, and existence is not authority.** Verified weights
    do not imply a working runtime, and a birth record does not imply a signing
    key. The status payload and the display keep those apart.
+10. **`UNKNOWN` is not `PASS`.** The birth gate blocks whenever it cannot
+    establish a prerequisite, and a check that raises blocks rather than passing
+    by omission. Absence of a model is a `FAIL`, not a gap in knowledge.
+11. **Partial birth cannot look like success.** Every ceremony step is checked
+    before the next begins, a failure preserves the evidence gathered so far, and
+    there is no code path past a failure. A birth record that exists is a record
+    of a completed ceremony.
 
 ## License
 
