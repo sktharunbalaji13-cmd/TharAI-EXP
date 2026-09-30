@@ -1,0 +1,206 @@
+{
+  "schema": "babylab/m012-verification/v1",
+  "milestone": "M012",
+  "status": "BLOCKED / NOT_CONFIGURED",
+  "human_model_selection": {
+    "status": "NOT_DECLARED",
+    "declaration_path": "human_control/experiment_config/model_deployment.json",
+    "declaration_exists": false,
+    "declared_by_required": true,
+    "rationale_required": true,
+    "relative_paths_refused": true
+  },
+  "human_runtime_selection": {
+    "status": "NOT_DECLARED",
+    "traversed_with_the_model": true,
+    "why": "M012 verifies a paired choice -- a model AND a runtime -- so both are named in one declaration by one person"
+  },
+  "model_artifact": {
+    "status": "NOT_CONFIGURED",
+    "sha256": null,
+    "external_digest": "NOT_SUPPLIED",
+    "quantization_source": "never inferred from the filename"
+  },
+  "runtime": {
+    "status": "NOT_CONFIGURED",
+    "sha256": null,
+    "version": null,
+    "version_source_required": "the executable's own --version output"
+  },
+  "discovery": {
+    "model_candidates_reported": 0,
+    "runtime_candidates_reported": 0,
+    "promotable": false,
+    "unselected_binary_on_this_host": {
+      "path": "C:/Users/k.tharun balaji/.docker/bin/inference/llama-server.exe",
+      "size_bytes": 8438086,
+      "sha256": "8bb68042d0c779f40f7d30687b88475de39fd36f2ebff313c66110268e2b1160",
+      "action_taken": "NOT selected, NOT hashed, NOT executed"
+    },
+    "structural_mechanisms": [
+      "Candidate carries no selected/approved/chosen/usable field",
+      "CandidateReport.promotable is a hard-coded False with no branch",
+      "load_declaration is the only producer of a Deployment and reads a path a human wrote",
+      "assert_not_selected raises on any candidate the declaration does not name"
+    ],
+    "candidates_hashed_during_scan": false,
+    "candidates_executed_during_scan": false
+  },
+  "model_runtime_separation": {
+    "enforced_as_a_criterion": true,
+    "a_verified_model_does_not_verify_a_runtime": true,
+    "a_verified_runtime_does_not_verify_a_model": true
+  },
+  "compatibility": {
+    "status": "UNKNOWN",
+    "reason": "not established: no human deployment declaration",
+    "states": [
+      "COMPATIBLE",
+      "INCOMPATIBLE",
+      "UNKNOWN"
+    ],
+    "extension_is_evidence": false,
+    "gguf_magic_is_evidence": false,
+    "only_a_load_settles_it": true,
+    "silence_is_not_an_answer": true,
+    "stub_probe_can_advance_the_sequence": false,
+    "established_by_a_real_load": false
+  },
+  "artifact_freeze": {
+    "captured_before_execution": true,
+    "model_checked": true,
+    "runtime_checked": true,
+    "mutation_verdict": "ARTIFACT MUTATED / RUNTIME MUTATED, and the sequence stops"
+  },
+  "real_runtime": {
+    "status": "NOT_TESTABLE",
+    "mode": "NOT_TESTABLE",
+    "stub_can_claim_real": false
+  },
+  "real_inference": {
+    "status": "NOT_TESTABLE",
+    "prompt_digest": null,
+    "output_digest": null,
+    "output_class": "FOUNDATION_MODEL_OUTPUT",
+    "output_is_subject_experience": false,
+    "execution_is_learning": false
+  },
+  "token_accounting": {
+    "policy": "OBSERVED only when the runtime prints a count; a total is DERIVED; anything else is UNAVAILABLE and never estimated"
+  },
+  "gpu": {
+    "confirmation_requires": "a non-CPU backend from the runtime AND an affirmative offload line from its own output",
+    "layer_count_is_evidence": false,
+    "exercised_with_a_real_runtime": false
+  },
+  "vram": {
+    "source": "nvidia-smi",
+    "runtime_allocation": "UNAVAILABLE",
+    "inferred_from_model_size": false
+  },
+  "determinism": {
+    "verdict": "NOT_DETERMINED",
+    "attempted": false,
+    "vocabulary": [
+      "DETERMINISTIC_FOR_TEST_CONFIGURATION",
+      "NONDETERMINISTIC_FOR_TEST_CONFIGURATION",
+      "NOT_DETERMINED"
+    ]
+  },
+  "process_identity": {
+    "status": "VERIFIED",
+    "measured_from": "a live process token, not from configuration"
+  },
+  "subject_account_runtime": {
+    "status": "NOT_TESTABLE",
+    "intended_account": "THARUNBALAJI-LA\\BABY_AI_TEST",
+    "intended_sid": "S-1-5-21-2406520953-1060965512-844951592-1022",
+    "account_weakened": false,
+    "account_promoted": false,
+    "acl_denies_removed": false,
+    "fallback_taken": false
+  },
+  "protected_file_probe": {
+    "status": "NOT_TESTABLE",
+    "reason": "the probe ran as the operator, so its access results are not evidence about the subject account",
+    "boundary_meaningful": false,
+    "categories_probed": [
+      "provenance",
+      "event",
+      "human_control",
+      "private_key",
+      "research",
+      "control_token"
+    ],
+    "categories_silently_skipped": 0
+  },
+  "workspace": {
+    "write_allowed": true,
+    "readback_ok": true,
+    "cleanup_ok": true,
+    "residue": null,
+    "used_a_protected_path": false
+  },
+  "network": {
+    "policy": "LOCAL_ONLY_NO_FETCH",
+    "outbound_attempted": false,
+    "acquisition": "none"
+  },
+  "provenance": {
+    "human_rationale_recorded_verbatim": true,
+    "output_text_in_record": false,
+    "model_output_can_alter_provenance": false
+  },
+  "observatory": {
+    "selection_section_present": true,
+    "selection_shown_before_verification": true,
+    "unselected_candidate_count_shown": true,
+    "executes_anything": false,
+    "psychological_fields": 0
+  },
+  "audit": {
+    "schema": "babylab/m012-audit/v1",
+    "questions": 16,
+    "derived": 11,
+    "unknown": 5,
+    "reverification": "passed",
+    "doctored_answer_detected": true
+  },
+  "failure_behaviour": {
+    "blocked_is_distinct_from_failed": true,
+    "each_refusal_names_its_criterion": true,
+    "no_downstream_fabrication": true,
+    "settings_never_reduced_automatically": true,
+    "artifacts_never_substituted": true
+  },
+  "critical_final_state": {
+    "subject": "NONE",
+    "birth": "NOT_PERFORMED",
+    "baby_ai_key": "NOT_CREATED",
+    "autonomy": "NONE",
+    "memory": "NONE",
+    "learning": "NONE",
+    "self_modification": "NONE"
+  },
+  "criteria": {
+    "SATISFIED": 8,
+    "BLOCKED": 2,
+    "NOT_REACHED": 17,
+    "NOT_TESTABLE": 2
+  },
+  "tests": {
+    "m012_deployment": "65 passed, 2 subtests",
+    "portable_suite": "1442 passed, 749 subtests",
+    "host_security_suite": "15 failed, 10 passed (harness NOT_TESTABLE, unchanged since M005 closure)"
+  },
+  "not_testable_conditions": [
+    "no human deployment declaration exists, so there is no foundation",
+    "compatibility established by a real load: no runtime-and-GGUF pair has been supplied",
+    "real GGUF loaded and real inference executed: nothing to load",
+    "prompt and output digests, token accounting, GPU and VRAM evidence, and determinism from a real run: no run occurred",
+    "model and runtime immutability across a real run: no run occurred",
+    "runtime execution under BABY_AI_TEST: the session holds neither impersonation privilege and this laboratory never accepts a password",
+    "protected-file denial to the actual runtime process: nothing runs as the subject account"
+  ],
+  "unresolved_defects": []
+}

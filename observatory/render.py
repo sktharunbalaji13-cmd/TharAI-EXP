@@ -24,6 +24,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 from observer.format import DIM, RESET, supports_colour
 from observatory.graph import EdgeKind
@@ -772,6 +773,101 @@ class ObservatoryRenderer:
         )
         return lines
 
+    def deployment_section(self, snapshot: ObservatorySnapshot) -> list[str]:
+        """Milestone 012: the human's declared foundation selection.
+
+        Placed first inside the foundation area, because it is the *decision*
+        and everything below it is the verification of that decision. A reader
+        who sees "runtime mode: REAL_RUNTIME" without having seen who chose the
+        substrate would be reading the result of a choice they never saw made.
+
+        Two states are deliberately distinguished and never merged:
+
+        * ``NOT_DECLARED`` -- no human wrote a deployment declaration. The
+          laboratory has no foundation, which is the correct state until told.
+        * ``DECLARED`` -- a human named a model and a runtime, with a reason. The
+          reason is displayed, because "which foundation, and why" is research
+          provenance and not a footnote.
+
+        A candidate count is shown with its "none selected" note, so the display
+        makes visible that things exist on the machine which are *not* in use.
+        That is the M012 discovery rule rendered honestly.
+        """
+        block = snapshot.deployment or {}
+        if not block:
+            return []
+        lines = [self._rule("FOUNDATION SELECTION")]
+
+        for label, key in (
+            ("model selection", "human_model_selection"),
+            ("runtime selection", "human_runtime_selection"),
+        ):
+            value = str(block.get(key, "UNAVAILABLE"))
+            colour = FG_GREEN if value == "DECLARED" else FG_YELLOW
+            lines.append(self._kv(label, self._c(value, colour)))
+
+        model_path = str(block.get("model_path", "UNAVAILABLE"))
+        if model_path != "UNAVAILABLE":
+            lines.append(self._kv("model", self._c(Path(model_path).name, DIM)))
+        digest = block.get("model_sha256")
+        lines.append(
+            self._kv("model sha256",
+                     (str(digest)[:16] + "...") if digest and
+                     digest != "UNAVAILABLE" else self._c("UNAVAILABLE", DIM))
+        )
+
+        external = str(block.get("model_external_digest") or "NOT SUPPLIED")
+        source = str(block.get("model_external_source") or "none")
+        if block.get("digest_verified"):
+            colour = FG_GREEN
+        elif block.get("digest_status") == "NO_EXTERNAL_DIGEST_SUPPLIED":
+            colour = FG_YELLOW
+        else:
+            colour = DIM
+        lines.append(
+            self._kv("external digest", self._c(f"{external}  ({source})", colour))
+        )
+
+        runtime_path = str(block.get("runtime_path", "UNAVAILABLE"))
+        if runtime_path != "UNAVAILABLE":
+            lines.append(self._kv("runtime", self._c(Path(runtime_path).name, DIM)))
+        lines.append(
+            self._kv("runtime version",
+                     str(block.get("runtime_version")
+                         or block.get("runtime_expected_version")
+                         or "UNAVAILABLE"))
+        )
+
+        if block.get("selection_attributed"):
+            lines.append(
+                self._kv("selected by", str(block.get("declared_by", "UNAVAILABLE")))
+            )
+        else:
+            lines.append(
+                self._kv("selected by",
+                         self._c("UNATTRIBUTED - not a selection this project "
+                                 "can attribute", FG_YELLOW))
+            )
+
+        disagreement = block.get("filename_disagreement")
+        if disagreement:
+            for chunk in _wrap(str(disagreement), self.options.width - 24):
+                lines.append("  " + self._c(chunk, FG_YELLOW))
+
+        candidates = block.get("candidates_reported") or {}
+        if candidates:
+            lines.append(self._kv("candidates found", self._c(
+                f"{candidates.get('models', 0)} model, "
+                f"{candidates.get('runtimes', 0)} runtime on this machine; "
+                "none selected", DIM,
+            )))
+
+        lines.append(self._kv("real runtime", str(block.get("real_runtime", "NOT_TESTABLE"))))
+        lines.append(
+            self._kv("compatibility", str(block.get("compatibility", "UNKNOWN")))
+        )
+        return lines
+
     def footer(self) -> list[str]:
         return [
             self._rule(),
@@ -786,6 +882,7 @@ class ObservatoryRenderer:
         sections: list[list[str]] = [self.header(snapshot)]
         sections.append(self.birth_section(snapshot))
         sections.append(self.foundation_section(snapshot))
+        sections.append(self.deployment_section(snapshot))
         sections.append(self.runtime_verification_section(snapshot))
         sections.append(self.state_section(snapshot))
         sections.append(self.graph_section(snapshot))

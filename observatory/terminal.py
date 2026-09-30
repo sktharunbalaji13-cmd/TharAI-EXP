@@ -62,6 +62,7 @@ class ObservatorySession:
         self._birth = self._read_birth()
         self._foundation = self._read_foundation()
         self._runtime_verification = self._read_runtime_verification()
+        self._deployment = self._read_deployment()
         self.registry = SubjectRegistry(self.keyring, self._birth)
         self.reader = ObservatoryReader(store=self.store, clock=self.clock)
         self.attributor = Attributor(
@@ -158,6 +159,34 @@ class ObservatorySession:
                 "birth": "NOT_PERFORMED",
             }
 
+    def _read_deployment(self) -> dict[str, Any]:
+        """The declared foundation selection, read without verifying anything.
+
+        :func:`foundation.m012_status.deployment_only` reads the declaration and
+        the candidate report. It does not hash the artifact, probe the runtime,
+        load a model, or run an inference -- any of which on every poll would make
+        this display the most expensive process in the laboratory, and a panel
+        that performs the verification it reports is not a panel.
+        """
+        from babylab.errors import BabyLabError
+
+        try:
+            from foundation.m012_status import deployment_only
+
+            return deployment_only(self.paths.root)
+        except (BabyLabError, OSError, ValueError) as exc:
+            return {
+                "human_model_selection": "UNAVAILABLE",
+                "human_runtime_selection": "UNAVAILABLE",
+                "model_path": "UNAVAILABLE",
+                "runtime_path": "UNAVAILABLE",
+                "real_runtime": "NOT_TESTABLE",
+                "compatibility": "UNKNOWN",
+                "subject": "NONE",
+                "birth": "NOT_PERFORMED",
+                "note": f"the deployment panel could not be read: {exc}",
+            }
+
     # -- updating ---------------------------------------------------------
     def update(self) -> ObservatorySnapshot:
         """Consume new events and return the resulting snapshot.
@@ -190,6 +219,7 @@ class ObservatorySession:
             birth=self._birth,
             foundation=self._foundation,
             runtime_verification=self._runtime_verification,
+            deployment=self._deployment,
         )
 
     def render(self, options: RenderOptions | None = None) -> str:

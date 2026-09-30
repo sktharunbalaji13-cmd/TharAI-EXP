@@ -1478,3 +1478,121 @@ events, ledger 14. No BABY_AI key, no birth record, no subject, no model, no
 weights, no autonomous process. The M009 birth gate still reports BLOCKED on
 MODEL_NOT_CONFIGURED across all fourteen prerequisites. M012 not started.
 
+---
+
+## 2026-09-30 - Milestone 012: human-selected foundation model and runtime deployment
+
+### What was built
+
+The selection boundary, made structural. `foundation/deployment.py` (one explicit
+joint human declaration), `discovery.py` (report-only candidates),
+`compatibility.py` (COMPATIBLE / INCOMPATIBLE / UNKNOWN), `audit.py` (sixteen
+evidence-derived questions), `m012.py` (the ordered sequence), `m012_status.py`
+(the Observatory's read surface), an Observatory section, and 65 tests.
+
+M012 = BLOCKED / NOT_CONFIGURED. No human wrote a declaration, so there is no
+foundation to verify. Nothing was downloaded, chosen, recommended, or ranked. The
+machinery is built, the gates are proven, the laboratory is clean.
+
+### Discovery cannot promote, structurally
+
+M011 found a real llama.cpp binary in a Docker bin directory and left it
+unselected. M012 makes that impossible to lose by accident. Candidate carries no
+field that could hold a decision -- no selected, approved, chosen, or usable.
+CandidateReport.promotable is a hard-coded False with no branch, so a future code
+path cannot make it True. load_declaration is the only producer of a Deployment
+and takes a path a human wrote. And assert_not_selected raises on any candidate
+the declaration does not name, so a future convenience hits a wall rather than
+executing a binary nobody chose.
+
+Tested adversarially rather than on the happy path: a real .gguf sits in the
+weights directory with no declaration, and the answer is still NOT_CONFIGURED.
+Then a declaration names a different file and the decoy is still refused -- naming
+one artifact does not silently authorise another beside it. The positive case is
+tested too, so the guard is a check rather than a wall.
+
+Candidates are not hashed or executed during a scan either. Hashing a
+multi-gigabyte file would perform the verification the human's declaration is
+supposed to authorise, against a file nobody has chosen yet; executing an
+unselected binary to read its version is running a program nobody chose to run.
+
+### One declaration, two identities
+
+M010 and M011 read a runtime config and a separate manifest. M012 asks a paired
+question -- did this human choose this model to run on this runtime -- which needs
+both decisions from one person at one moment. declared_by and rationale are both
+required: a foundation chosen without a named human and a stated reason is not a
+selection this project can attribute, and the provenance record would be unusable.
+Relative paths and non-64-hex digests are refused. The generated template writes
+FILL IN into every decision-bearing field, so submitting it unfilled is INVALID
+rather than accepted with invented provenance.
+
+Quantization is never read from a filename. A name encoding a different
+quantization than the declaration is reported as filename_disagreement -- a
+possible human error, surfaced and not resolved.
+
+### Compatibility is a load, and only a load
+
+The specification warns against file extension = compatibility, which is easy to
+write by accident because the format check and the compatibility check look like
+neighbours. A .gguf extension is a naming convention; a GGUF magic check narrows
+the format and nothing about compatibility; only an actual load settles it. A
+load that exits 0 and prints nothing is UNKNOWN, because silence is not an answer.
+A refusal quotes the runtime's own message and exit code and is never retried
+with a smaller context, a lower layer count, or a substitute file.
+
+established_by_load is the predicate that matters. A caller-supplied process
+stand-in sets method = STUB_LOAD and leaves the flag False, so a fixture that
+answers every probe positively cannot walk the sequence into an inference.
+Verified: with a stub returning COMPATIBLE the ledger still reports NOT_RUN. A
+milestone whose acceptance criterion is "a real load" must not be satisfiable from
+a test.
+
+### Two gaps the tests found in my own blocked path
+
+A blocked deployment recorded neither network_absent nor no_subject_no_birth.
+Both are guarantees that do not weaken when nothing runs, and a reader seeing
+NOT_REACHED on everything else needs to see that "nothing was fetched" and "no
+subject exists" are still asserted. Omitting them would have made a blocked
+milestone look like one that stopped trying. Both are now unconditional, and
+both are pinned by tests.
+
+### The sixteen-question audit
+
+Every answer is read from a named field and the field is recorded. Absent or
+wrongly-typed yields UNKNOWN with a reason, never a confident default. On this
+host: 11 derived, 5 unknown, which is the honest split. reverify recomputes
+everything and names disagreements, so a hand-edited audit fails; doctoring one
+answer produces exactly one disagreement.
+
+### What stayed unblocked
+
+Eight criteria are answerable with no model at all, and all eight are recorded:
+hardware measured now, discovery inert, a live process token, the workspace
+write/readback/cleanup with no residue, no tools/memory/learning, no network, no
+subject, and a complete re-verifiable audit.
+
+### Reused unchanged from M011
+
+The probe, including its boundary_meaningful flag. Run as the operator, protected
+access succeeds -- correctly, because the operator owns the keyring -- and the
+verdict says so rather than implying M005 is broken. All six categories are
+asserted present by test, pinning M011's fix against the silent-skip bug that had
+hidden four of them. SUBJECT_ACCOUNT_RUNTIME is NOT_TESTABLE for the unchanged
+M011 reason: no impersonation privilege, and this laboratory never accepts a
+password. No fallback to the operator token; the account is not weakened.
+
+### BLOCKED is not FAILED
+
+The two are distinct enum values and a test asserts they are not equal. A refusal
+is correct behaviour, not an error, and collapsing the two would make a
+deliberately-blocked milestone indistinguishable from a broken one.
+
+### Unchanged
+
+M005 boundary intact at 11/11, workspaces un-denied. Event chain intact, 20
+events, ledger 14. Key directory back to 3 files. No BABY_AI key, no birth record,
+no subject, no model, no weights, no probe residue. The M009 birth gate still
+BLOCKED on MODEL_NOT_CONFIGURED across all fourteen prerequisites. M013 not
+started.
+
