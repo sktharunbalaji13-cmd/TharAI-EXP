@@ -1,0 +1,139 @@
+{
+  "schema": "babylab/host-readiness-launch-followup/v1",
+  "milestone": "NONE (launch-mechanism investigation)",
+  "generated_at": "2026-09-30T11:33:23.111Z",
+  "launch_readiness": {
+    "schema": "babylab/subject-launch-readiness/v1",
+    "ready": false,
+    "python_shims": [
+      {
+        "path": "C:\\Users\\k.tharun balaji\\AppData\\Local\\Microsoft\\WindowsApps\\py.exe",
+        "exists": true,
+        "is_regular_file": true,
+        "size_bytes": 0,
+        "sha256": "UNAVAILABLE (App Execution Alias: a per-user shim with no bytes)",
+        "pe_machine": "UNAVAILABLE (reparse point)",
+        "is_app_execution_alias": true,
+        "reachable_by_subject": false,
+        "blocking_principals": [],
+        "detail": "this is an App Execution Alias, a per-user shim with no bytes behind it. It resolves only for the account that created it, so no other account can launch it, and Windows reports that as 'the file cannot be accessed by the system'. Use the real interpreter instead."
+      },
+      {
+        "path": "C:\\Users\\k.tharun balaji\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe",
+        "exists": true,
+        "is_regular_file": true,
+        "size_bytes": 0,
+        "sha256": "UNAVAILABLE (App Execution Alias: a per-user shim with no bytes)",
+        "pe_machine": "UNAVAILABLE (reparse point)",
+        "is_app_execution_alias": true,
+        "reachable_by_subject": false,
+        "blocking_principals": [],
+        "detail": "this is an App Execution Alias, a per-user shim with no bytes behind it. It resolves only for the account that created it, so no other account can launch it, and Windows reports that as 'the file cannot be accessed by the system'. Use the real interpreter instead."
+      },
+      {
+        "path": "C:\\Users\\k.tharun balaji\\AppData\\Local\\Python\\bin\\python.exe",
+        "exists": true,
+        "is_regular_file": true,
+        "size_bytes": 602968,
+        "sha256": "997a6276808ea87477ea4855b21458383f15d7e65de55fed7bddcbc217e1aa13",
+        "pe_machine": "x64",
+        "is_app_execution_alias": false,
+        "reachable_by_subject": false,
+        "blocking_principals": [
+          "C:\\Users\\k.tharun balaji\\AppData\\Local\\Python\\bin",
+          "C:\\Users\\k.tharun balaji\\AppData\\Local\\Python",
+          "C:\\Users\\k.tharun balaji\\AppData\\Local",
+          "C:\\Users\\k.tharun balaji\\AppData",
+          "C:\\Users\\k.tharun balaji"
+        ],
+        "detail": "not reachable by the subject account. the target itself does not grant it. Untraversable ancestors: C:\\Users\\k.tharun balaji\\AppData\\Local\\Python\\bin, C:\\Users\\k.tharun balaji\\AppData\\Local\\Python, C:\\Users\\k.tharun balaji\\AppData\\Local, C:\\Users\\k.tharun balaji\\AppData, C:\\Users\\k.tharun balaji."
+      }
+    ],
+    "python_interpreter": {
+      "path": "C:\\Users\\k.tharun balaji\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
+      "exists": true,
+      "is_regular_file": true,
+      "size_bytes": 106328,
+      "sha256": "cce21c0e8710e304273e98ac4b2b0f5aceb639acbcd2343cbaa5c4e81619c45b",
+      "pe_machine": "x64",
+      "is_app_execution_alias": false,
+      "reachable_by_subject": false,
+      "blocking_principals": [
+        "C:\\Users\\k.tharun balaji\\AppData\\Local\\Python\\pythoncore-3.14-64",
+        "C:\\Users\\k.tharun balaji\\AppData\\Local\\Python",
+        "C:\\Users\\k.tharun balaji\\AppData\\Local",
+        "C:\\Users\\k.tharun balaji\\AppData",
+        "C:\\Users\\k.tharun balaji"
+      ],
+      "detail": "not reachable by the subject account. the target itself does not grant it. Untraversable ancestors: C:\\Users\\k.tharun balaji\\AppData\\Local\\Python\\pythoncore-3.14-64, C:\\Users\\k.tharun balaji\\AppData\\Local\\Python, C:\\Users\\k.tharun balaji\\AppData\\Local, C:\\Users\\k.tharun balaji\\AppData, C:\\Users\\k.tharun balaji."
+    },
+    "probe": {
+      "path": "C:\\dev\\TharAI-EXP\\scripts\\subject_boundary_probe.py",
+      "exists": true,
+      "is_regular_file": true,
+      "size_bytes": 10386,
+      "sha256": "19f517c260067391493f780ff0415e025c3da33fcf195fad6a938872b33ae996",
+      "pe_machine": "not a PE image",
+      "is_app_execution_alias": false,
+      "reachable_by_subject": true,
+      "blocking_principals": [],
+      "detail": "C:\\dev\\TharAI-EXP\\scripts\\subject_boundary_probe.py is reachable by the subject account"
+    },
+    "repository": "C:\\dev\\TharAI-EXP",
+    "repository_reachability": {
+      "reachable": true,
+      "blocked_ancestors": []
+    },
+    "launch_command": "UNAVAILABLE (see blocking)",
+    "blocking": [
+      "the interpreter at C:\\Users\\k.tharun balaji\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe is not executable by BABY_AI_TEST: C:\\Users\\k.tharun balaji\\AppData\\Local\\Python\\pythoncore-3.14-64; C:\\Users\\k.tharun balaji\\AppData\\Local\\Python; C:\\Users\\k.tharun balaji\\AppData\\Local; C:\\Users\\k.tharun balaji\\AppData; C:\\Users\\k.tharun balaji"
+    ],
+    "read_only": true,
+    "executed": false,
+    "credentials_handled": false
+  },
+  "host_readiness": "NOT_TESTABLE",
+  "real_process_identity": "NOT_TESTABLE",
+  "findings": {
+    "why_start_process_py_failed": "py resolves to an App Execution Alias under the operator profile; per-user shims cannot be launched by another account and are zero-length reparse points with no bytes to hash",
+    "interpreter_confinement": "the real CPython 3.14.3 is under the operator profile, whose entire directory chain lacks a BUILTIN\\Users ACE, so BABY_AI_TEST cannot traverse to it",
+    "repository_and_probe_reachable": true,
+    "llama_runtime_also_confined": "the M010 unselected llama-server.exe carries the same three-principal ACL under .docker\\bin\\inference\\",
+    "no_system_python": "no Python exists outside the operator profile except MySQL Workbench relocatable build, which needs PYTHONHOME that -Credential cannot propagate and PS 5.1 cannot inject"
+  },
+  "privilege_reader_bug": {
+    "symptom": "the token reader falsely reported SeRestorePrivilege held",
+    "cause": "LUID declared as a 64-bit integer (alignment 8, struct 16) instead of Windows two 32-bit halves (alignment 4, struct 12); the TOKEN_PRIVILEGES array was read from the wrong offset with the wrong stride",
+    "fix": "LUID as two DWORDs; array read through the declared offset 4",
+    "control": "test_7d parses whoami /priv and requires every reported privilege to be found; test_7e requires SeImpersonatePrivilege absent",
+    "corrected_finding": "the harness holds no notable privileges"
+  },
+  "unchanged": {
+    "events": 20,
+    "event_chain_intact": true,
+    "provenance_entries": 14,
+    "birth_record_present": false,
+    "model_dir_present": false,
+    "privileges_granted": [],
+    "acl_changes": 0,
+    "groups_changed": 0,
+    "tasks_created": 0,
+    "services_created": 0,
+    "account_changed": false,
+    "security_policy_changed": false
+  },
+  "m014_unchanged": {
+    "status": "BLOCKED",
+    "stage": "declaration",
+    "subject_id": "NONE",
+    "t_birth": "UNAVAILABLE",
+    "first_experience": "NOT_PERFORMED"
+  },
+  "tests": {
+    "subject_launch": "38 passed",
+    "host_readiness": "48 passed",
+    "portable_suite": "1771 passed, 749 subtests passed",
+    "host_security": "15 failed, 10 passed, 13 subtests -- NOT_TESTABLE"
+  },
+  "m015": "NOT STARTED"
+}

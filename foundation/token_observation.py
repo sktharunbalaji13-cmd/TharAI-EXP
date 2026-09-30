@@ -75,12 +75,48 @@ class _TOKEN_ELEVATION(ctypes.Structure):
     _fields_ = [("TokenIsElevated", wintypes.DWORD)]
 
 
-class _TOKEN_PRIVILEGES(ctypes.Structure):
-    _fields_ = [("PrivilegeCount", wintypes.DWORD), ("Privileges", wintypes.LPVOID)]
+class _LUID(ctypes.Structure):
+    """``LUID`` exactly as Windows declares it: two 32-bit halves.
+
+    Not a 64-bit integer. Windows' ``LUID`` is ``{DWORD LowPart; LONG
+    HighPart;}``, which aligns to 4 and makes ``LUID_AND_ATTRIBUTES`` 12 bytes.
+    Declaring it as ``c_longlong`` aligns it to 8 and makes the struct 16, so
+    walking the privilege array reads the wrong offsets and the wrong stride.
+
+    That bug is not cosmetic. It produced a *false privilege claim* --
+    ``SeRestorePrivilege`` reported as held by a token that does not hold it --
+    because a misaligned read happened to produce that privilege's LUID. A
+    verifier that reports a privilege the process does not have is worse than one
+    that reports nothing, so the layout has to match the header exactly.
+    """
+
+    _fields_ = [("LowPart", wintypes.DWORD), ("HighPart", wintypes.LONG)]
+
+    @property
+    def value(self) -> int:
+        return (int(self.HighPart) << 32) | int(self.LowPart)
 
 
 class _LUID_AND_ATTRIBUTES(ctypes.Structure):
-    _fields_ = [("Luid", ctypes.c_longlong), ("Attributes", wintypes.DWORD)]
+    _fields_ = [("Luid", _LUID), ("Attributes", wintypes.DWORD)]
+
+    @property
+    def luid_value(self) -> int:
+        return self.Luid.value
+
+
+class _TOKEN_PRIVILEGES(ctypes.Structure):
+    """``TOKEN_PRIVILEGES``: a count, then a C array of the attributes.
+
+    The array is declared as a real ctypes array rather than as an ``LPVOID``.
+    With ``LPVOID`` the struct aligns to 8 and reports a size of 16, so the array
+    would be read from offset 16 instead of the correct 4 -- which silently
+    misaligns every entry after the first. Declaring the element type makes ctypes
+    compute the header padding the way the C compiler does.
+    """
+
+    _fields_ = [("PrivilegeCount", wintypes.DWORD),
+                ("Privileges", _LUID_AND_ATTRIBUTES * 1)]
 
 
 _advapi32.OpenProcessToken.argtypes = [
@@ -90,6 +126,10 @@ _advapi32.GetTokenInformation.argtypes = [
     wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD,
     ctypes.POINTER(wintypes.DWORD),
 ]
+#: Exposed for the regression test that pins the privilege-table layout against
+#: `whoami /priv`. Alias kept so the test need not reach into a private alias.
+_ADVAPI_ALIASES = _advapi32
+
 _advapi32.LookupPrivilegeValueW.argtypes = [
     wintypes.LPCWSTR, wintypes.LPCWSTR, ctypes.POINTER(_LUID_AND_ATTRIBUTES),
 ]
@@ -354,11 +394,15 @@ def _privileges_present(pid: int) -> list[str]:
     header = ctypes.cast(buffer, ctypes.POINTER(_TOKEN_PRIVILEGES)).contents
     if not header.PrivilegeCount:
         return []
+    # Read the array through the offset ctypes computed for it (4, not 16) rather
+    # than through a fixed one, so the stride comes from the declared element type
+    # instead of being assumed. Declared as ``* 1`` so the header size stays
+    # truthful; the pointer below is what walks the real, variable-length array.
     entries = ctypes.cast(
-        ctypes.byref(buffer, ctypes.sizeof(_TOKEN_PRIVILEGES)),
+        ctypes.byref(buffer, _TOKEN_PRIVILEGES.Privileges.offset),
         ctypes.POINTER(_LUID_AND_ATTRIBUTES),
     )
-    held = {int(entries[i].Luid) for i in range(header.PrivilegeCount)}
+    held = {entries[i].luid_value for i in range(header.PrivilegeCount)}
 
     present: list[str] = []
     for name in _NOTABLE_PRIVILEGES:
@@ -366,7 +410,7 @@ def _privileges_present(pid: int) -> list[str]:
         if not _advapi32.LookupPrivilegeValueW(None, name,
                                                ctypes.byref(descriptor)):
             continue
-        if int(descriptor.Luid) in held:
+        if descriptor.luid_value in held:
             present.append(name)
     return sorted(present)
     return False

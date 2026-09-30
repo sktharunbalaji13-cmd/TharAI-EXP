@@ -1880,3 +1880,100 @@ NOT_TESTABLE. 48 investigation tests. portable suite 1733 passed / 749 subtests.
 Host security 15 failed / 10 passed / 13 subtests, all NOT_TESTABLE.
 
 No birth occurred, no subject exists, and M014 is unchanged. M015 not started.
+
+---
+
+## 2026-09-30 - Host-readiness follow-up: direct executable launch
+
+A launch-mechanism investigation. No model selected, nothing downloaded, no
+runtime executed, no birth, no subject, M014 birth behaviour untouched.
+
+### Why the human's command failed
+
+Start-Process -FilePath "py" returned "The file cannot be accessed by the system."
+The cause is not BABY_AI_TEST and not a birth problem. `py` is the Python
+Launcher and resolves to an App Execution Alias under the operator's own profile.
+Aliases are per-user shims that resolve only for the account that created them,
+so BABY_AI_TEST cannot launch one. They are also zero-length reparse points with
+no bytes behind them, which is why they cannot even be hashed.
+
+### Pointing at the real interpreter is necessary but not sufficient
+
+    C:\Users\k.tharun balaji\AppData\Local\Python\pythoncore-3.14-64\python.exe
+    sha256 cce21c0e8710e304273e98ac4b2b0f5aceb639acbcd2343cbaa5c4e81619c45b
+    106328 bytes, x64, CPython 3.14.3
+
+Correct, absolute, and still unusable. Its ACL names three principals -- SYSTEM,
+Administrators, the operator -- and BABY_AI_TEST is not one. No directory in the
+chain has a BUILTIN\Users ACE at all, from pythoncore-3.14-64 up to
+k.tharun balaji, so the account cannot even traverse into the path.
+
+The fault is isolated and precise: the repository and the probe ARE reachable
+(C:\dev grants Users:(RX) and Authenticated Users:(M); the M005 ACEs deny only
+writes). The interpreter is the single blocker.
+
+This bites M014 harder than it bites the probe: the llama-server.exe that a real
+birth needs carries the same three-principal ACL under .docker\bin\inference\.
+Whatever makes the interpreter reachable must eventually apply to the runtime and
+model too.
+
+### The other Python, checked rather than assumed
+
+MySQL Workbench ships one with a permissive Users:(RX) ACL, so it is reachable --
+but it is a relocatable build needing PYTHONHOME. Without it, it infers its prefix
+from the CWD and dies with "No module named 'encodings'"; with it set, it still
+fails on the stdlib layout. And it could not be used anyway: -Credential makes
+Windows build a NEW environment block from the target profile, so PYTHONHOME set
+in the operator's shell would not propagate, and PS 5.1's Start-Process has no
+-Environment parameter. There is no system-wide Python on this host.
+
+### launch_readiness returns no command
+
+foundation/subject_launch.py returns "UNAVAILABLE (see blocking)" rather than
+emitting a command that cannot work. A command that looks right and fails with a
+permissions error sends the next person looking in the wrong place. The exact
+command is emitted only once the interpreter is genuinely reachable.
+
+### A false privilege claim, found and fixed
+
+While checking the launch, my own token reader reported the harness held
+SeRestorePrivilege. It does not -- whoami /priv lists five privileges and that is
+not among them.
+
+The cause was my struct layout. Windows declares LUID as two 32-bit halves, so
+LUID_AND_ATTRIBUTES is 12 bytes and the TOKEN_PRIVILEGES array begins at offset 4.
+I had declared Luid as a 64-bit integer, aligning to 8, making the struct 16 and
+reading the array from the wrong offset with the wrong stride -- and a misaligned
+read happened to produce that privilege's LUID.
+
+A verifier that invents a privilege the process does not have is worse than one
+that reports none, so it is now pinned by a positive control: a test parses
+whoami /priv and requires the reader to find every privilege it reports, while a
+second requires SeImpersonatePrivilege reported absent. Both pass. Corrected
+finding: the harness holds no notable privileges.
+
+### Reachability needs two checks
+
+A file can be world-readable and still be unreachable because a parent is private,
+so reachable_by_subject() checks the file AND every ancestor. My first
+implementation checked only the file, reported C:\ and C:\dev as untraversable, and
+separately failed on every directory because it only handled files -- two false
+negatives that would have pointed the fix in exactly the wrong direction.
+
+The ACL parser also truncated principal names at the first space, turning
+"NT AUTHORITY\SYSTEM" into "AUTHORITY\SYSTEM". Fixed by reassembling the name from
+every token up to the one carrying ":(".
+
+### Result
+
+LAUNCH_COMMAND_READY false. HOST READINESS NOT_TESTABLE. 38 launch tests, 48
+host-readiness tests, portable suite 1771 passed / 749 subtests. Host security
+15 failed / 10 passed / 13 subtests, all NOT_TESTABLE.
+
+Nothing changed: no privilege, group, ACL, policy, password, task or service.
+Event store 20 events, chain intact; provenance 14 entries; no BIRTH.json; no
+model directory. M014 still BLOCKED at stage declaration.
+
+Not decided here and not a laboratory action: the interpreter, and eventually the
+runtime and model, need to live somewhere BABY_AI_TEST can reach. The deny ACEs
+stay exactly as they are; only the executable's location would change.
