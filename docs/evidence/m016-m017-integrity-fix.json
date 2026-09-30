@@ -1,0 +1,100 @@
+{
+  "schema": "babylab/m016-m017-integrity-fix/v1",
+  "author": "operator (Claude Code session); no subject participation",
+  "identity": {
+    "source": "interactive runas.exe launch, human-observed output",
+    "verified": true,
+    "account_name": "THARUNBALAJI-LA\\BABY_AI_TEST",
+    "user_sid": "S-1-5-21-2406520953-1060965512-844951592-1022",
+    "identity_read_from": "live process token (OpenProcessToken)",
+    "integrity_level_as_reported": "UNPROTECTED",
+    "integrity_level_status": "RESOLVED_AS_PROBE_BUG",
+    "integrity_note": "the probe read the mandatory-label RID from SID offset 2 instead of 8, landing inside the 6-byte identifier authority whose low DWORD is 0. Corrected and re-verified against whoami /groups.",
+    "credentials_stored": false,
+    "savecred_used": false
+  },
+  "integrity": {
+    "status": "CORRECTED",
+    "previous_reported": "UNPROTECTED",
+    "previous_was": "PROBE_BUG",
+    "root_cause": "mandatory-label SID RID read from offset 2 instead of 8, landing inside the 6-byte IdentifierAuthority whose low DWORD is 0",
+    "sid_header": "Revision(1) + SubAuthorityCount(1) + IdentifierAuthority(6) = 8 bytes, then SubAuthority DWORDs",
+    "measured_operator_token": {
+      "offset_2": "0x0000 (UNPROTECTED)",
+      "offset_8": "0x2000 (MEDIUM=8192)",
+      "whoami_groups": "S-1-16-8192 Medium Mandatory Level"
+    },
+    "regression_from_m016": "the M016 report claimed the byte-by-byte parse was fixed; only the stride was corrected, the base offset stayed wrong, and zero is a legitimate RID so the failure was silent",
+    "corrections": [
+      "RID read from offset 8 + (n-1)*4",
+      "second independent path via ConvertSidToStringSid parses the RID from the SID string",
+      "parse failure returns <no-label> or <unreadable-sid> and emits integrity_note=PARSE_FAILED",
+      "UNPROTECTED now only printed for a real RID of 0",
+      "disagreement between the two paths reported explicitly"
+    ],
+    "operator_side_result": {
+      "integrity_level": "MEDIUM",
+      "independent": "MEDIUM",
+      "paths_agree": true
+    }
+  },
+  "identity_read_source": "live process token via OpenProcessToken/GetTokenInformation",
+  "subject_sid": "S-1-5-21-2406520953-1060965512-844951592-1022",
+  "operator_sid": "S-1-5-21-2406520953-1060965512-844951592-1001",
+  "boundary_test": {
+    "subject_side_executed": false,
+    "any_subject_denial_recorded": false,
+    "harness_prepared": true,
+    "classification": [
+      "OS_ALLOWED",
+      "OS_DENIED",
+      "PATH_ERROR",
+      "NOT_TESTABLE",
+      "ERROR"
+    ],
+    "additional_harness_defects": [
+      "PowerShell drops empty-string arguments, shifting later positional values; now uses - placeholder",
+      "implicit ..\\\\runtime fallback let a bogus scratch path report OS_ALLOWED for an untargeted case; removed",
+      "negative-control path C:\\\\nope_a genuinely existed because an earlier probe run created it at the volume root; probe was truthful, my assumption was wrong; stray directory removed"
+    ]
+  },
+  "operator_positive_control": {
+    "expected": "OS_ALLOWED for all operations",
+    "result": "17/17 OS_ALLOWED",
+    "mutation_tests": [
+      "always-OS_DENIED probe -> suite fails",
+      "always-UNPROTECTED probe -> suite fails"
+    ]
+  },
+  "regressions": {
+    "m015_boundary": "STAGING_VERIFIED",
+    "m005_protected_paths": 13,
+    "m005_digests_readable": 5,
+    "subject_runtime_files": 0,
+    "gguf_count": 0
+  },
+  "not_done": {
+    "runtime_staged": false,
+    "model_staged": false,
+    "llama_executed": false,
+    "inference": false,
+    "birth": false,
+    "subject_created": false,
+    "acl_modified": false,
+    "privilege_granted": false,
+    "credentials_stored": false,
+    "savecred_used": false
+  },
+  "tests": {
+    "boundary_harness": "36 passed",
+    "m016_launch": "36 passed",
+    "full_portable": "1897 passed, 2 warnings, 749 subtests",
+    "host_security": "15 failed, 10 passed, 13 subtests, all NOT_TESTABLE, unchanged"
+  },
+  "probe_binary": {
+    "path": "C:\\dev\\TharAI-EXP\\baby_workspace\\m016_probe.exe",
+    "sha256": "a03ca673141d5270016fcb0f7eac37c6203522dd75b42012f15b520b08760344",
+    "size_bytes": 17920
+  },
+  "written_at": "2026-09-30T13:52:07.534421+00:00"
+}

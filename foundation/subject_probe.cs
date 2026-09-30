@@ -126,7 +126,84 @@ internal static class Probe
 
     /// Integrity level as a short name. Read from the token's mandatory label,
     /// not from a token type value, because the token type does not carry it.
-static string IntegrityLevel(IntPtr token)
+/// The integrity RID read from a mandatory-label SID.
+    ///
+    /// Returns null when the SID is structurally unusable, so the caller can
+    /// report a parse failure instead of inventing a level. A mandatory-label SID
+    /// is S-1-16-&lt;RID&gt;: revision 1, one sub-authority, identifier authority 6.
+    ///
+    /// The header is 8 bytes, not 2:
+    ///
+    ///     offset 0  BYTE  Revision
+    ///     offset 1  BYTE  SubAuthorityCount
+    ///     offset 2  BYTE  IdentifierAuthority[6]
+    ///     offset 8  DWORD SubAuthority[SubAuthorityCount]
+    ///
+    /// Reading the RID from offset 2 lands inside the identifier authority, whose
+    /// bytes are 00 00 00 00 00 10 for S-1-16 — so the low DWORD is 0 and a Medium
+    /// token reports as UNPROTECTED. Verified on this host: the same token reads
+    /// 0x0 at offset 2 and 0x2000 at offset 8.
+    static uint? IntegrityRid(IntPtr label)
+    {
+        if (label == IntPtr.Zero) return null;
+        byte count = Marshal.ReadByte(label, 1);
+        if (count == 0) return null;
+        return (uint)Marshal.ReadInt32(label, 8 + (count - 1) * 4);
+    }
+
+    /// Independent second opinion on the integrity level.
+    ///
+    /// This does not share the offset arithmetic with :meth:`IntegrityLevel` --
+    /// it asks advapi32 to format the SID as a string and reads the last
+    /// component. Two independent paths agreeing is what makes a reported level
+    /// trustworthy; a single path that silently returns 0 looks identical to a
+    /// genuinely unprotected token.
+    static string IntegrityLevelIndependent(IntPtr token)
+    {
+        int len = 0;
+        GetTokenInformation(token, TokenInformationClass.TokenIntegrityLevel,
+                            IntPtr.Zero, 0, out len);
+        if (len == 0) return "<unreadable>";
+        IntPtr buf = Marshal.AllocHGlobal(len);
+        try
+        {
+            if (!GetTokenInformation(token, TokenInformationClass.TokenIntegrityLevel,
+                    buf, len, out len))
+                return "<unreadable>";
+            IntPtr label = Marshal.ReadIntPtr(buf);
+            if (label == IntPtr.Zero) return "<no-label>";
+            IntPtr text = IntPtr.Zero;
+            if (!ConvertSidToStringSid(label, out text))
+                return "<unconvertible>";
+            try
+            {
+                string sid = Marshal.PtrToStringAnsi(text);
+                if (sid == null) return "<unconvertible>";
+                int dash = sid.LastIndexOf('-');
+                if (dash < 0) return "<no-rid:" + sid + ">";
+                uint rid;
+                if (!uint.TryParse(sid.Substring(dash + 1), out rid)) return "<no-rid:" + sid + ">";
+                return NameForRid(rid);
+            }
+            finally { LocalFree(text); }
+        }
+        finally { Marshal.FreeHGlobal(buf); }
+    }
+
+    static string NameForRid(uint rid)
+    {
+        switch (rid)
+        {
+            case 0x0000: return "UNPROTECTED";
+            case 0x1000: return "LOW";
+            case 0x2000: return "MEDIUM";
+            case 0x3000: return "HIGH";
+            case 0x4000: return "SYSTEM";
+            default: return "UNKNOWN(" + rid.ToString("X") + ")";
+        }
+    }
+
+    static string IntegrityLevel(IntPtr token)
     {
         // Read the mandatory label and decode the RID from the last sub-authority.
         // The label is a SID whose sub-authority count is 1, and whose single value
@@ -144,20 +221,15 @@ static string IntegrityLevel(IntPtr token)
                 return "<unreadable>";
             var label = (TOKEN_MANDATORY_LABEL)Marshal.PtrToStructure(
                 buf, typeof(TOKEN_MANDATORY_LABEL));
-            if (label.Label == IntPtr.Zero) return "<empty-label>";
-            byte count = Marshal.ReadByte(label.Label);
-            if (count == 0) return "<empty-label>";
-            uint rid = (uint)Marshal.ReadInt32(
-                IntPtr.Add(label.Label, 2 + (count - 1) * 4));
-            switch (rid)
-            {
-                case 0x0000: return "UNPROTECTED";
-                case 0x1000: return "LOW";
-                case 0x2000: return "MEDIUM";
-                case 0x3000: return "HIGH";
-                case 0x4000: return "SYSTEM";
-                default: return "UNKNOWN(" + rid.ToString("X") + ")";
-            }
+
+            // A null label pointer means the API returned no mandatory label at
+            // all, which is a distinct fact from a RID of zero. They are reported
+            // differently so "no label" is never read as "unprotected".
+            if (label.Label == IntPtr.Zero) return "<no-label>";
+
+            uint? rid = IntegrityRid(label.Label);
+            if (rid == null) return "<unreadable-sid>";
+            return NameForRid(rid.Value);
         }
         finally { Marshal.FreeHGlobal(buf); }
     }
@@ -186,7 +258,19 @@ static string IntegrityLevel(IntPtr token)
             }
             finally { Marshal.FreeHGlobal(buf); }
 
-            Console.WriteLine("integrity_level=" + IntegrityLevel(token));
+            // Two independent reads of the same token fact. They must agree; a
+            // disagreement is itself reported, because a probe that cannot tell
+            // you it is confused is not evidence of anything.
+            string integrityDirect = IntegrityLevel(token);
+            string integrityViaSid = IntegrityLevelIndependent(token);
+            Console.WriteLine("integrity_level=" + integrityDirect);
+            Console.WriteLine("integrity_level_independent=" + integrityViaSid);
+            Console.WriteLine("integrity_paths_agree=" +
+                (integrityDirect == integrityViaSid ? "true" : "FALSE"));
+            if (integrityDirect != integrityViaSid)
+                Console.WriteLine("integrity_note=DISAGREEMENT between direct RID read and ConvertSidToStringSid path");
+            if (integrityDirect.StartsWith("<"))
+                Console.WriteLine("integrity_note=PARSE_FAILED — this is not an integrity level, do not treat it as UNPROTECTED");
 
             // Groups, so a verifier can see membership rather than assume it.
             var groups = new List<string>();
@@ -260,6 +344,34 @@ static string IntegrityLevel(IntPtr token)
         finally { Marshal.FreeHGlobal(p); }
     }
 
+    /// Positional argument at `index`, with "-" and blank treated as absent.
+    ///
+    /// The blank case exists because PowerShell removes empty arguments, so a
+    /// caller that wants to skip a positional slot must pass something. Treating a
+    /// real path as a flag is how the workspace test once ran against an option
+    /// string and reported a spurious format error.
+    static string Arg(string[] args, int index)
+    {
+        if (args.Length <= index) return "";
+        string value = args[index];
+        if (value == null || value.Trim().Length == 0) return "";
+        if (value == "-") return "";
+        return value;
+    }
+
+    /// Reads a --name=value argument. Returns "" when absent.
+    ///
+    /// An absent option is not an error: the caller decides whether the missing
+    /// path means the case is not applicable or that the harness is misconfigured,
+    /// and reporting that distinction is the whole point of the NOT_TESTABLE value.
+    static string Option(string[] args, string name)
+    {
+        foreach (string a in args)
+            if (a.StartsWith(name, StringComparison.OrdinalIgnoreCase))
+                return a.Substring(name.Length);
+        return "";
+    }
+
     // --- filesystem operations ------------------------------------------------
 
     /// Reports the true outcome of one attempted operation.
@@ -310,6 +422,67 @@ catch (Exception ex)
         File.Move(src, dst);
     }
 
+    /// A boundary case that reports whether the path was even reached.
+    ///
+    /// The distinction this protects: "the OS denied this" and "I never got to
+    /// ask" are different findings, and only the first says anything about an
+    /// ACL. A test that cannot reach its target must say so, because a probe that
+    /// reports denial for an unreachable path would let a misconfigured harness
+    /// masquerade as a working security boundary.
+    static string Reach(string path)
+    {
+        if (path == null || path.Length == 0) return "NOT_TESTABLE";
+        try
+        {
+            if (Directory.Exists(path)) return "REACHABLE";
+            if (File.Exists(path)) return "REACHABLE";
+            return "NOT_REACHABLE";
+        }
+        catch (Exception ex)
+        {
+            // An exception while merely *asking* whether the path exists is itself
+            // evidence the path is not usable, not a pass and not a denial.
+            return "NOT_REACHABLE:" + ex.GetType().Name;
+        }
+    }
+
+    static string RunGuarded(string label, string target, Action action)
+    {
+        string reach = Reach(target);
+        if (reach != "REACHABLE")
+        {
+            Console.WriteLine("probe=" + label + " result=NOT_TESTABLE reason=" +
+                (reach == "NOT_TESTABLE" ? "no_path_supplied" : "path_not_reached(" + reach + ")"));
+            return "NOT_TESTABLE";
+        }
+        return Run(label, action);
+    }
+
+    static void Enumerate(string label, string dir)
+    {
+        string reach = Reach(dir);
+        if (reach != "REACHABLE")
+        {
+            Console.WriteLine("probe=" + label + " result=" +
+                (reach == "NOT_TESTABLE" ? "NOT_TESTABLE" : "PATH_ERROR") +
+                " reason=" + (reach == "NOT_TESTABLE" ? "no_path_supplied" : "path_not_reached"));
+            return;
+        }
+        try
+        {
+            string[] entries = Directory.GetFileSystemEntries(dir);
+            Console.WriteLine("probe=" + label + " result=OS_ALLOWED entries=" + entries.Length);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Console.WriteLine("probe=" + label + " result=OS_DENIED winerror=5");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("probe=" + label + " result=ERROR " + ex.GetType().Name);
+        }
+    }
+
     static int Main(string[] args)
     {
         Console.WriteLine("schema=probe/v1");
@@ -328,14 +501,55 @@ catch (Exception ex)
             return 0;
         }
 
-        // paths: <scratchDir> <stagedExecutable> <protectedDir> <workspaceDir>
-        string scratch = args[0];
-        string staged = args.Length > 1 ? args[1] : "";
-        string protectedDir = args.Length > 2 ? args[2] : "";
-        string workspace = args.Length > 3 ? args[3] : "";
+        // Positional paths, unchanged from the M016 interface so a previously
+        // captured run remains comparable:
+        //   [0] scratch      a staging directory the subject should not be able to write
+        //   [1] staged       a staged runtime, or "" when none is staged
+        //   [2] protectedDir an M005 protected directory, or ""
+        //   [3] workspace    the intentionally writable experimentation area
+        //
+        // Named options follow, added for the M015 boundary test. Each carries an
+        // explicit directory to traverse and enumerate, so the read-only halves of
+        // the boundary (which a scratch argument alone cannot express) are testable:
+        //   --traverse=<dir> --enumerate-runtime=<dir> --enumerate-model=<dir>
+        //   --enumerate-config=<dir> --read-file=<path> --acl-target=<path>
+        // Windows PowerShell DROPS an empty-string argument: passing `"" "d"` delivers
+        // only two arguments, which silently shifts every later positional value.
+        // A named placeholder keeps the positions aligned, and "-" is normalised to
+        // "not supplied" rather than being treated as the path "-".
+        string scratch = Arg(args, 0);
+        string staged = Arg(args, 1);
+        string protectedDir = Arg(args, 2);
+        string workspace = Arg(args, 3);
+
+        string traverseDir = Option(args, "--traverse=");
+        string enumRuntime = Option(args, "--enumerate-runtime=");
+        string enumModel = Option(args, "--enumerate-model=");
+        string enumConfig = Option(args, "--enumerate-config=");
+        string readFile = Option(args, "--read-file=");
+        string aclTarget = Option(args, "--acl-target=");
 
         int allowed = 0;
         Action bump = delegate { allowed++; };
+
+        // --- read-only halves of the boundary, first -----------------------
+        RunGuarded("traverse_directory", traverseDir, () => {
+                Directory.GetFileSystemEntries(traverseDir); bump();
+            });
+        // No implicit fallback. Deriving `..\runtime` from the scratch argument looked
+        // convenient but meant a run with a bogus scratch path still "tested" the
+        // real staging directory -- so a broken harness could report OS_ALLOWED
+        // for a case it never actually targeted. An unsupplied option is reported
+        // as unsupplied.
+        Enumerate("enumerate_runtime", enumRuntime);
+        Enumerate("enumerate_model", enumModel);
+        Enumerate("enumerate_config", enumConfig);
+        RunGuarded("read_disposable_file", readFile, () => {
+                File.ReadAllText(readFile); bump();
+            });
+        RunGuarded("modify_acl", aclTarget, () => {
+                File.SetAttributes(aclTarget, FileAttributes.ReadOnly); bump();
+            });
 
         // A private copy of the staged file for one destructive operation, made by the
         // probe itself. The copy is created in the scratch directory -- which is
@@ -352,7 +566,8 @@ catch (Exception ex)
 
         if (scratch.Length > 0)
         {
-            var r = Run("create_file_in_staging_scratch", () => { Touch(Path.Combine(scratch, "p.txt")); bump(); });
+            RunGuarded("create_file_in_staging_scratch", scratch,
+                () => { Touch(Path.Combine(scratch, "p.txt")); bump(); });
 
             // Operations against the staged executable are only meaningful when a
             // staged path was actually supplied. Running them against an empty
@@ -405,17 +620,22 @@ catch (Exception ex)
                 Console.WriteLine("probe=staged_executable_operations result=NOT_TESTABLE " +
                     "reason=no_staged_executable_supplied");
             }
-            Run("create_child_directory", () => {
+            RunGuarded("create_child_directory", scratch, () => {
                 Directory.CreateDirectory(Path.Combine(scratch, "childdir")); bump();
             });
-            Run("delete_child_directory", () => {
+            RunGuarded("delete_child_directory", scratch, () => {
                 string d = Path.Combine(scratch, "childdir");
                 if (Directory.Exists(d)) Directory.Delete(d); bump();
             });
             if (protectedDir.Length > 0)
             {
-                Run("modify_acl_on_protected", () => {
-                    File.SetAttributes(Path.Combine(protectedDir, "probe_acl_target"), FileAttributes.ReadOnly);
+                // Reaches for an existing file rather than naming one that may not
+                // exist: a SetAttributes on a missing path returns winerror 2, which
+                // is a path error, and reporting that as a denial would be a lie.
+                RunGuarded("modify_acl_on_protected", protectedDir, () => {
+                    string[] entries = Directory.GetFileSystemEntries(protectedDir);
+                    if (entries.Length == 0) throw new DirectoryNotFoundException("empty");
+                    File.SetAttributes(entries[0], FileAttributes.ReadOnly);
                     bump();
                 });
             }

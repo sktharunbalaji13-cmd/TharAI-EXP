@@ -157,6 +157,126 @@ is the result.
   keyboard, and this milestone did not fake one.
 - **NOT_TESTABLE:** everything in the table above.
 
+## Follow-up: identity verified interactively, integrity bug found and fixed
+
+### Identity is now empirically verified
+
+A human ran the probe through the interactive `runas.exe` route and observed:
+
+```
+identity_framework=THARUNBALAJI-LA\BABY_AI_TEST
+user_sid=S-1-5-21-2406520953-1060965512-844951592-1022
+account_name=THARUNBALAJI-LA\BABY_AI_TEST
+```
+
+This is the missing empirical result from M016: a **real** process ran under
+`BABY_AI_TEST`, and it read that identity from its own live token via
+`OpenProcessToken`/`GetTokenInformation` — not from arguments, configuration, or
+executable path. `...-1022` is the subject; `...-1001` is the operator.
+
+So the unattended-launch blocker is resolved in practice: it needs a human at a
+keyboard, not a privilege change. No privilege was granted and no ACL was
+modified.
+
+### `integrity_level=UNPROTECTED` was a probe bug, not a token property
+
+That same run reported `integrity_level=UNPROTECTED`, which cannot be true of a
+Medium token. It was **not** reinterpreted as MEDIUM — it was diagnosed.
+
+A mandatory-label SID is `S-1-16-<RID>`, and its header is **8 bytes**:
+
+```
+offset 0  BYTE  Revision
+offset 1  BYTE  SubAuthorityCount
+offset 2  BYTE  IdentifierAuthority[6]     <-- the bug was here
+offset 8  DWORD SubAuthority[SubAuthorityCount]
+```
+
+The probe read the RID from offset `2 + (n-1)*4`. Offset 2 is inside the
+6-byte identifier authority, whose bytes are `00 00 00 00 00 10` for S-1-16 —
+so the low DWORD is `0`, which maps to `UNPROTECTED`.
+
+Measured directly on the operator's own Medium token:
+
+```
+offset 2  -> 0x0000    (what the probe reported: UNPROTECTED)
+offset 8  -> 0x2000    (correct: MEDIUM, = 8192)
+whoami /groups: S-1-16-8192  Mandatory Label\Medium Mandatory Level
+```
+
+**This was a regression I introduced.** The M016 report claimed a byte-by-byte
+SID-parse bug had been fixed. What I actually fixed was the *stride*; I left the
+*base offset* wrong. The old code read the identifier authority and reported the
+zeros it found as an integrity level — and because zero is a legitimate RID
+value, the failure was silent.
+
+Corrected behaviour:
+
+- RID read from offset `8 + (n-1)*4`.
+- A **second, independent path** reads the same token via
+  `ConvertSidToStringSid` and parses the RID from the string. The probe now
+  prints `integrity_level`, `integrity_level_independent`, and
+  `integrity_paths_agree`.
+- A parse failure returns `<no-label>` or `<unreadable-sid>` and emits
+  `integrity_note=PARSE_FAILED`. **`UNPROTECTED` can now only be printed when a
+  real RID of 0 was read.**
+- Disagreement between the two paths is reported explicitly.
+
+Operator-side result now: `integrity_level=MEDIUM`,
+`integrity_level_independent=MEDIUM`, `integrity_paths_agree=true`, cross-checked
+against `whoami /groups`.
+
+### No filesystem boundary test has occurred yet
+
+The probe interface is extended and the harness is prepared, but **nothing has
+been run as the subject against `subject_runtime`**. No `OS_DENIED` for the
+subject has been observed, recorded, or claimed.
+
+### Two further harness bugs found while preparing the test
+
+Both were found by negative controls, and both would have produced false results:
+
+1. **PowerShell drops empty-string arguments.** Passing `""` as a positional slot
+   shifted every later value by one, so the workspace test ran against an option
+   string and reported a spurious `NotSupportedException`. The harness now uses
+   `-` as an explicit "not supplied" placeholder.
+2. **An implicit path fallback** derived `..\runtime` from the scratch argument
+   when `--enumerate-runtime` was absent. A run with a bogus scratch path still
+   "tested" the real staging directory, reporting `OS_ALLOWED` for a case it never
+   targeted. There is no fallback now; an unsupplied option reports
+   `NOT_TESTABLE reason=no_path_supplied`.
+
+A third defect was my own test setup: a negative control using `C:\nope_a`
+reported `OS_ALLOWED` because that path genuinely existed — the probe had created
+it at the volume root during an earlier run. The probe was truthful; my
+assumption was wrong. The stray directory was removed.
+
+## Boundary test preparation
+
+The probe now supports the full read/write matrix as disposable paths:
+
+| Operation | How it is reached |
+|---|---|
+| traverse | `--traverse=<dir>` |
+| enumerate runtime / model / config | `--enumerate-{runtime,model,config}=<dir>` |
+| read a permitted file | `--read-file=<path>` |
+| write / append / delete / rename / replace | positional `<scratch> <staged>` |
+| create / delete child directory | positional `<scratch>` |
+| modify ACL | `--acl-target=<path>`, positional `<protected>` |
+| workspace write / read / delete | positional `<workspace>` |
+
+Results are classified strictly as `OS_ALLOWED`, `OS_DENIED`, `PATH_ERROR`,
+`NOT_TESTABLE`, `ERROR`. A finding whose target was never reached is marked
+`reached_target: false` and is not evidence about any ACL.
+
+### Operator positive control (real, run here)
+
+The operator holds full control, so every operation must report `OS_ALLOWED` —
+17 of 17 did. This is what makes any later `OS_DENIED` meaningful. Two mutation
+tests confirm the control has teeth: a probe modified to always report
+`OS_DENIED`, and one modified to always report `UNPROTECTED`, both cause the
+suite to fail.
+
 ## Residual blockers
 
 1. `SeImpersonatePrivilege` absent → blocks `CreateProcessWithLogonW`.

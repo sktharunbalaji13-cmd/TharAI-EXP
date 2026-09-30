@@ -2251,3 +2251,86 @@ deliberate decision; and finally a probe run as the subject before any
 SUBJECT_PROCESS_VERIFIED claim is recorded.
 
 Unrelated untracked tooling and the pre-existing .gitignore edit remain untouched.
+
+## M016 follow-up: interactive runas verified subject identity; integrity parse bug found and fixed
+
+Milestone: M016 follow-up (no new milestone created)
+Subject process launched: YES, interactively, by the human. Runtime staged: NO.
+Model staged: NO. Birth: NO.
+
+The human ran the native probe through interactive runas.exe and observed a real
+process reading its own token:
+
+  identity_framework=THARUNBALAJI-LA\BABY_AI_TEST
+  user_sid=S-1-5-21-2406520953-1060965512-844951592-1022
+  account_name=THARUNBALAJI-LA\BABY_AI_TEST
+
+This is the empirical result M016 lacked. The identity came from the live token
+via OpenProcessToken/GetTokenInformation, not from arguments, configuration, or
+executable path. ...-1022 is the subject; ...-1001 is the operator. The
+unattended-launch blocker is therefore resolved in practice without any privilege
+change: it needs a human at a keyboard, not SeImpersonatePrivilege.
+
+The same run reported integrity_level=UNPROTECTED. That was NOT reinterpreted as
+MEDIUM. It was diagnosed and was a probe bug.
+
+A mandatory-label SID is S-1-16-<RID> with an 8-byte header: Revision(1) +
+SubAuthorityCount(1) + IdentifierAuthority(6), then the SubAuthority DWORDs. The
+probe read the RID from offset 2 + (n-1)*4, which lands inside the six-byte
+identifier authority. Those bytes are 00 00 00 00 00 10 for S-1-16, so the low
+DWORD is 0, which maps to UNPROTECTED. Measured on the operator's own Medium
+token: offset 2 reads 0x0000, offset 8 reads 0x2000, and whoami /groups confirms
+S-1-16-8192 Medium Mandatory Level.
+
+This was a regression introduced in M016. That report claimed a byte-by-byte SID
+parse bug had been fixed; what was actually fixed was the stride, while the base
+offset stayed wrong. Because zero is a legitimate RID value, the failure was
+silent and looked exactly like a real integrity level.
+
+Corrections: the RID is now read from offset 8 + (n-1)*4; a second independent
+path reads the same token through ConvertSidToStringSid and parses the RID from
+the SID string; the probe prints integrity_level, integrity_level_independent and
+integrity_paths_agree; a parse failure returns <no-label> or <unreadable-sid> and
+emits integrity_note=PARSE_FAILED, so UNPROTECTED can now only be printed for a
+real RID of 0; and disagreement between the two paths is reported explicitly.
+Operator-side result is now MEDIUM on both paths with paths_agree=true,
+cross-checked against whoami /groups.
+
+The probe interface was extended for the M015 boundary test: --traverse,
+--enumerate-runtime, --enumerate-model, --enumerate-config, --read-file and
+--acl-target, alongside the existing positional scratch/staged/protected/workspace
+slots. Results are classified strictly as OS_ALLOWED, OS_DENIED, PATH_ERROR,
+NOT_TESTABLE or ERROR, and any finding whose target was never reached is marked
+reached_target=false and is not evidence about an ACL.
+
+Two further harness defects were found by negative controls, both of which would
+have produced false results. First, Windows PowerShell drops empty-string
+arguments, so passing "" shifted every later positional value by one and made the
+workspace test run against an option string, reporting a spurious
+NotSupportedException; the harness now uses "-" as an explicit placeholder.
+Second, an implicit fallback derived ..\runtime from the scratch argument when
+--enumerate-runtime was absent, so a run with a bogus scratch path still
+"tested" the real staging directory and reported OS_ALLOWED for a case it never
+targeted; the fallback is gone and an unsupplied option reports NOT_TESTABLE.
+
+A third issue was my own test setup rather than a probe defect: a negative control
+using C:\nope_a reported OS_ALLOWED because that path genuinely existed, having
+been created at the volume root by an earlier probe run. The probe was truthful
+and my assumption was wrong; the stray directory was removed.
+
+No filesystem boundary test has been run as the subject. No OS_DENIED has been
+observed or recorded for BABY_AI_TEST. The operator positive control is real and
+reports OS_ALLOWED for all 17 operations, which is what gives any future denial
+its meaning. Two mutation tests confirm the control has teeth: a probe modified to
+always report OS_DENIED, and one modified to always report UNPROTECTED, each
+cause the suite to fail.
+
+Regression: M015 boundary still STAGING_VERIFIED; M005's 13 protected paths
+intact with 5 digests readable; subject_runtime still empty with no .gguf
+anywhere; no llama-server execution, no inference, no birth, no subject created,
+no ACL modified, no privilege granted, no credential stored and no /savecred
+used. Full portable suite 1897 passed / 2 warnings / 749 subtests, up from 1861
+with 36 new tests. Host security 15 failed / 10 passed / 13 subtests, unchanged
+and still all NOT_TESTABLE.
+
+Unrelated untracked tooling and the pre-existing .gitignore edit remain untouched.
