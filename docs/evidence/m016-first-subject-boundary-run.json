@@ -1,0 +1,105 @@
+{
+  "schema": "babylab/m016-first-subject-boundary-run/v1",
+  "author": "operator ran runas.exe interactively; harness analysis by the Claude Code session",
+  "classification": "PARTIALLY_VERIFIED",
+  "not_claimed": [
+    "STAGING_VERIFIED_BY_SUBJECT",
+    "FULL_BOUNDARY_PASS"
+  ],
+  "identity": {
+    "user_sid": "S-1-5-21-2406520953-1060965512-844951592-1022",
+    "account_name": "THARUNBALAJI-LA\\BABY_AI_TEST",
+    "integrity_level": "MEDIUM",
+    "integrity_level_independent": "MEDIUM",
+    "integrity_paths_agree": true,
+    "pid": "10568",
+    "verdict": "VERIFIED: a real BABY_AI_TEST token, read from OpenProcessToken rather than from arguments"
+  },
+  "findings_investigated": {
+    "read_disposable_file": {
+      "observed": "OS_ALLOWED",
+      "actual_target": "C:/dev/TharAI-EXP/baby_workspace/m016_probe.exe",
+      "target_directory": "baby_workspace, the intentionally WRITABLE experimentation area",
+      "inside_subject_runtime": false,
+      "verdict": "TRUE BUT MISLEADING: it proved the subject can read a file in the workspace, not that it can read inside the boundary. Nothing in the output named the file, so the line was easy to read as evidence about subject_runtime.",
+      "correction": "the probe now echoes read_file_target= and read_file_bytes_observed= so the object that produced the result is named in the output itself"
+    },
+    "delete_child_directory": {
+      "observed": "OS_ALLOWED",
+      "actual_target": "subject_runtime/config/childdir",
+      "created_by_this_invocation": false,
+      "root_cause": "the delete was guarded by if (Directory.Exists(...)) INSIDE the lambda that counted success. Creation had been denied, so the directory did not exist, the guard skipped the work, and the lambda still counted it",
+      "correct_statement": "the subject performed no deletion at all; the result was a no-op reported as success and is the opposite of the truth",
+      "correction": "two distinct fixtures, with the delete fixture created through the same guarded path as the create fixture; an absent fixture now reports NOT_TESTABLE reason=fixture_absent"
+    },
+    "restore_acl_target_attributes": {
+      "observed": null,
+      "verdict": "CORRECT BEHAVIOUR REPORTED AS A FAULT: the subject holds no FILE_WRITE_ATTRIBUTES under M015, so it cannot undo the ReadOnly bit the ACL test set. That refusal is itself evidence the boundary works.",
+      "correction": "now reported as EXPECTED_OS_DENIED with a note that operator-side restoration is required. No privilege was granted to make the subject able to clean up after itself."
+    }
+  },
+  "crash": {
+    "site": "Directory.GetFiles(stagedDir, ownedPrefix + wildcard) in cleanup",
+    "root_cause": "Directory.GetFiles reports access-denied as a plain IOException carrying ERROR_ACCESS_DENIED, but Run only caught UnauthorizedAccessException. The subject cannot list runtime/, so the unguarded call threw after every result had been recorded.",
+    "consequence": "the 21 results survived in the output file; the cleanup report and the process exit did not",
+    "correction": "Run handles IOException and classifies winerror 5 as OS_DENIED; the cleanup enumeration has its own try/catch reporting cleanup_state=CLEANUP_NOT_PERMITTED plus cleanup_operator_followup=<prefix> for operator-side completion. No ACL is weakened to make cleanup possible."
+  },
+  "observations_that_stand": {
+    "note": "these were genuine OS results against real objects and are not retracted",
+    "OS_DENIED": [
+      "traverse_directory",
+      "enumerate_runtime",
+      "enumerate_model",
+      "enumerate_config",
+      "modify_acl",
+      "create_file_in_staging_scratch",
+      "modify_staged_executable",
+      "append_staged_executable",
+      "delete_staged_executable",
+      "rename_staged_executable",
+      "replace_staged_executable",
+      "create_child_executable_beside_runtime",
+      "create_child_directory"
+    ],
+    "OS_ALLOWED": [
+      "read_disposable_file",
+      "workspace_write",
+      "workspace_read",
+      "workspace_delete"
+    ],
+    "interpretation": "the subject could not traverse, enumerate, write, modify, append, delete, rename, replace, spawn a child executable, or create a directory anywhere inside subject_runtime, while retaining full use of the intentionally writable baby_workspace"
+  },
+  "cleanup_design": {
+    "ownership": "per-invocation run_token embedded in every owned filename; cleanup matches only that token",
+    "subject_cannot_enumerate": true,
+    "handling": "a denial is reported as CLEANUP_NOT_PERMITTED with the exact prefix for operator-side removal, rather than weakening the directory ACL so the subject can tidy up after itself",
+    "reported_fields": [
+      "cleanup_owned_copies_removed",
+      "cleanup_owned_copies_failed",
+      "cleanup_state",
+      "cleanup_operator_followup"
+    ]
+  },
+  "regressions": {
+    "m015_boundary": "STAGING_VERIFIED",
+    "m005_protected_paths": 13,
+    "m005_digests_readable": 5
+  },
+  "not_done": {
+    "runtime_staged": false,
+    "model_staged": false,
+    "llama_executed": false,
+    "inference": false,
+    "birth": false,
+    "acl_modified": false,
+    "privilege_granted": false,
+    "network_changed": false,
+    "second_subject_run": false
+  },
+  "tests": {
+    "subject_boundary_run": "20 passed",
+    "full_portable": "1930 passed, 2 warnings, 749 subtests",
+    "host_security": "15 failed, 10 passed, 13 subtests, all NOT_TESTABLE, unchanged"
+  },
+  "written_at": "2026-09-30T16:10:29.798040+00:00"
+}

@@ -610,10 +610,24 @@ def test_missing_paths_never_produce_a_denial():
     run = subprocess.run([str(exe), *argv], capture_output=True, text=True,
                          shell=False, timeout=120)
     parsed = parse_probe_output(run.stdout)
+    # Cleanup lines describe what the probe did about its own artefacts, not the
+    # boundary under test, so they are excluded from the operation classification.
+    cleanup_ops = {"cleanup_p_txt", "cleanup_childdir", "cleanup_owned_copy",
+                   "cleanup_enumerate_owned_copies", "restore_acl_target_attributes",
+                   "staged_executable_operations", "prepare_delete_child_fixture"}
+
     for finding in parsed["findings"]:
+        if finding["operation"] in cleanup_ops:
+            continue
         assert finding["outcome"] != Outcome.OS_DENIED.value, finding
         assert finding["outcome"] in {
             Outcome.PATH_ERROR.value, Outcome.NOT_TESTABLE.value}, finding
+        # delete_child_directory carries its own explicit "fixture_absent"
+        # explanation, so it is not routed through the RunGuarded reachability
+        # check and is legitimately reported as having consulted its target.
+        if finding["operation"] == "delete_child_directory":
+            assert "fixture_absent" in finding["detail"], finding
+            continue
         assert finding["reached_target"] is False, finding
 
 
@@ -647,9 +661,10 @@ def test_no_boundary_test_has_been_recorded_as_passed():
 
 
 #: Files that may legitimately be present in the staging tree: the operator's
-#: disposable boundary-test target. Nothing else. A real runtime or model is not
-#: permitted, and neither is a leftover probe artefact.
-ALLOWED_STAGING_FILES = {PREEXISTING_TARGET}
+#: disposable boundary-test target and the per-run fixture created for a subject
+#: boundary run. Nothing else. A real runtime or model is not permitted, and
+#: neither is a leftover probe artefact.
+ALLOWED_STAGING_FILES = {PREEXISTING_TARGET, "m016_subjectrun_fixture.exe"}
 
 
 def test_no_runtime_or_model_is_staged():

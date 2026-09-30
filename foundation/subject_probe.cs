@@ -344,6 +344,25 @@ internal static class Probe
         finally { Marshal.FreeHGlobal(p); }
     }
 
+    /// Whether an exception means the OS refused access.
+    ///
+    /// .NET surfaces a denial as `UnauthorizedAccessException` from the
+    /// convenience helpers but as a plain `IOException` carrying ERROR_ACCESS_DENIED
+    /// from `Directory.GetFiles` and friends. Catching only the former is what let
+    /// a denied directory enumeration become an unhandled crash and take the rest
+    /// of the report with it.
+    static bool IsAccessDenied(Exception ex)
+    {
+        if (ex is UnauthorizedAccessException) return true;
+        return HResultCode(ex) == 5;
+    }
+
+    static int HResultCode(Exception ex)
+    {
+        // Win32 error codes live in the low 16 bits of the HRESULT.
+        return ex.HResult & 0xFFFF;
+    }
+
     /// A token identifying this invocation, used to name the files the probe owns.
     ///
     /// Ownership by creation, not by filename prefix: the cleanup sweep deletes
@@ -410,12 +429,19 @@ internal static class Probe
         }
         catch (IOException ex)
         {
-            int code = ex.HResult & 0xFFFF;
+            // Directory.GetFiles and friends surface a denial as a plain IOException
+            // carrying ERROR_ACCESS_DENIED rather than an UnauthorizedAccessException.
+            // Catching only the latter is what let a denied enumeration become an
+            // unhandled crash and take the rest of the report with it.
+            //
+            // No `when` filter here: Add-Type compiles with the C# 5 compiler that
+            // ships inside PowerShell 5.1, which does not support exception filters.
+            int code = HResultCode(ex);
             string result = code == 5 ? "OS_DENIED" : "PATH_ERROR";
             Console.WriteLine("probe=" + label + " result=" + result + " winerror=" + code);
             return result;
         }
-catch (Exception ex)
+        catch (Exception ex)
         {
             Console.WriteLine("probe=" + label + " result=ERROR " +
                 ex.GetType().Name + ":" + ex.Message);
@@ -557,8 +583,22 @@ catch (Exception ex)
         Enumerate("enumerate_runtime", enumRuntime);
         Enumerate("enumerate_model", enumModel);
         Enumerate("enumerate_config", enumConfig);
+        // The read test. The exact target is echoed before the attempt and again after,
+        // so a reader can confirm which object produced the result rather than
+        // inferring it from the harness configuration. A read that succeeds on a
+        // file outside the staging tree is a true observation of *that* file and
+        // says nothing about the staging boundary -- which is why the target is
+        // reported rather than assumed.
+        Console.WriteLine("read_file_target=" + (readFile.Length > 0 ? readFile : "<none>"));
         RunGuarded("read_disposable_file", readFile, () => {
-                File.ReadAllText(readFile); bump();
+                long bytes = new FileInfo(readFile).Length;
+                using (var stream = File.OpenRead(readFile))
+                {
+                    byte[] buffer = new byte[1];
+                    stream.Read(buffer, 0, 1);
+                }
+                Console.WriteLine("read_file_bytes_observed=" + bytes);
+                bump();
             });
         // The ACL-modification test. The ReadOnly attribute it sets MUST be restored
         // before this function returns: the attribute is not part of the ACL, so
@@ -583,10 +623,18 @@ catch (Exception ex)
             try { File.SetAttributes(aclTarget, original); }
             catch (Exception ex)
             {
-                // Reported rather than swallowed: a fixture left read-only
-                // would silently invalidate every later run.
-                Console.WriteLine("probe=restore_acl_target_attributes result=ERROR " +
-                    ex.GetType().Name);
+                // A refusal here is CORRECT behaviour, not a harness fault: the
+                // subject holds no FILE_WRITE_ATTRIBUTES under the M015 boundary, so
+                // it cannot undo what the test asked it to do. That refusal is itself
+                // evidence. The operator restores the attribute after the run; the
+                // probe must never treat its own inability as something to escalate.
+                bool denied = IsAccessDenied(ex);
+                Console.WriteLine("probe=restore_acl_target_attributes result=" +
+                    (denied ? "EXPECTED_OS_DENIED" : "ERROR") +
+                    (denied
+                        ? " note=subject lacks FILE_WRITE_ATTRIBUTES, which is the" +
+                          " intended boundary; operator must restore after the run"
+                        : " " + ex.GetType().Name));
             }
         }
 
@@ -714,13 +762,48 @@ catch (Exception ex)
                 Console.WriteLine("probe=staged_executable_operations result=NOT_TESTABLE " +
                     "reason=no_staged_executable_supplied");
             }
+            // The child-directory pair. These use two DISTINCT, explicitly named
+            // directories rather than one shared name, and the delete asserts the
+            // directory is actually present first.
+            //
+            // An earlier version created "childdir" and then deleted "childdir"
+            // behind `if (Directory.Exists(...))`. When creation was denied, the
+            // delete silently did nothing -- and the probe reported OS_ALLOWED,
+            // because the skip lived inside the lambda that counted success. That
+            // turned "the subject could not create a directory" into "the subject
+            // could delete a directory", which is the opposite of what happened.
+            string childCreate = Path.Combine(scratch, "m016_child_create_dir");
+            string childDelete = Path.Combine(scratch, "m016_child_delete_dir");
+
             RunGuarded("create_child_directory", scratch, () => {
-                Directory.CreateDirectory(Path.Combine(scratch, "childdir")); bump();
+                Directory.CreateDirectory(childCreate); bump();
             });
-            RunGuarded("delete_child_directory", scratch, () => {
-                string d = Path.Combine(scratch, "childdir");
-                if (Directory.Exists(d)) Directory.Delete(d); bump();
+
+            // The delete fixture is created through the SAME guarded path as the
+            // create target. An earlier version created it with an unguarded Run,
+            // so when the scratch directory was unreachable the create was reported
+            // NOT_TESTABLE while the unguarded creation still succeeded by a
+            // different route -- which is how a delete could report OS_ALLOWED in a
+            // run where nothing could be written.
+            RunGuarded("prepare_delete_child_fixture", scratch, () => {
+                Directory.CreateDirectory(childDelete); bump();
             });
+            bool deleteFixtureCreated = Directory.Exists(childDelete);
+            Console.WriteLine("delete_child_fixture_present=" + deleteFixtureCreated);
+            Console.WriteLine("delete_child_fixture_path=" + childDelete);
+
+            if (deleteFixtureCreated)
+            {
+                RunGuarded("delete_child_directory", childDelete, () => {
+                    Directory.Delete(childDelete); bump();
+                });
+            }
+            else
+            {
+                Console.WriteLine("probe=delete_child_directory result=NOT_TESTABLE " +
+                    "reason=fixture_absent; the probe could not create a directory " +
+                    "to delete, so no deletion was attempted");
+            }
             if (protectedDir.Length > 0)
             {
                 // Reaches for an existing file rather than naming one that may not
@@ -747,16 +830,44 @@ catch (Exception ex)
         // Delete only what this invocation created. The names come from ownedPrefix,
         // which embeds this process's run token, so the sweep cannot match a
         // staged runtime, a model, an artefact from an earlier run, or anything an
-        // operator placed in the tree. Prefix matching alone is not trusted: the
-        // probe first enumerates and confirms the token is in the name.
+        // operator placed in the tree.
         //
-        // Cleanup failures are reported rather than swallowed. A copy left behind
-        // would contaminate the next run, and a silent failure would make the next
-        // run's entry counts wrong for reasons nobody could see.
+        // The enumeration itself is inside the try. When the running account
+        // cannot list the scratch directory -- which is exactly the case for the
+        // subject, whose deny ACE removes list permission -- Directory.GetFiles
+        // throws. An unguarded call there crashed the probe after every result had
+        // already been recorded, which is how the first subject run ended with an
+        // unhandled exception instead of a report.
+        //
+        // A denial here is not a failure to clean up: the account could not have
+        // created anything in a directory it cannot list. It is recorded as
+        // CLEANUP_NOT_PERMITTED so an operator can finish the job afterwards, and
+        // the probe reports which artefacts are left rather than claiming success.
         int cleanupFailed = 0;
+        int cleanupRemoved = 0;
+        string cleanupState = "NOT_REQUIRED";
         if (stagedDir.Length > 0)
         {
-            foreach (string leftover in Directory.GetFiles(stagedDir, ownedPrefix + "*"))
+            string[] leftovers;
+            try
+            {
+                leftovers = Directory.GetFiles(stagedDir, ownedPrefix + "*");
+                cleanupState = "ENUMERATED";
+            }
+            catch (Exception ex)
+            {
+                leftovers = new string[0];
+                bool denied = IsAccessDenied(ex);
+                cleanupState = denied ? "CLEANUP_NOT_PERMITTED" : "CLEANUP_ENUMERATION_FAILED";
+                Console.WriteLine("probe=cleanup_enumerate_owned_copies result=" +
+                    (denied ? "OS_DENIED" : "ERROR") +
+                    " winerror=" + HResultCode(ex) +
+                    (denied
+                        ? " note=account cannot list the scratch directory; " +
+                          "operator-side cleanup required"
+                        : " " + ex.GetType().Name));
+            }
+            foreach (string leftover in leftovers)
             {
                 if (Path.GetFileName(leftover).Contains(runToken))
                 {
@@ -766,6 +877,7 @@ catch (Exception ex)
                         if ((attrs & FileAttributes.ReadOnly) != 0)
                             File.SetAttributes(leftover, attrs & ~FileAttributes.ReadOnly);
                         File.Delete(leftover);
+                        cleanupRemoved++;
                     }
                     catch (Exception ex)
                     {
@@ -775,14 +887,60 @@ catch (Exception ex)
                     }
                 }
             }
+            if (cleanupState == "ENUMERATED")
+                cleanupState = cleanupFailed == 0 ? "CLEAN" : "PARTIAL";
         }
+        Console.WriteLine("cleanup_owned_copies_removed=" + cleanupRemoved);
         Console.WriteLine("cleanup_owned_copies_failed=" + cleanupFailed);
+        Console.WriteLine("cleanup_state=" + cleanupState);
+        Console.WriteLine("cleanup_operator_followup=" + ownedPrefix + "*");
 
-        // p.txt belongs to the scratch directory's own create test.
-        try { if (scratch.Length > 0 && File.Exists(Path.Combine(scratch, "p.txt"))) File.Delete(Path.Combine(scratch, "p.txt")); }
-        catch (Exception) { }
-        try { if (Directory.Exists(Path.Combine(scratch, "childdir"))) Directory.Delete(Path.Combine(scratch, "childdir")); }
-        catch (Exception) { }
+        // The scratch-directory artefacts. Every name the probe created is listed
+        // explicitly -- a cleanup that knows only some of its own artefacts leaves
+        // the rest behind, and a stray directory then makes a later run's
+        // "fixture absent" assertion untrue for the wrong reason.
+        //
+        // Deletion is attempted by exact name and any refusal is reported rather
+        // than swallowed. An empty Directory.Exists guard is deliberately NOT used
+        // for these: skipping a delete silently makes it indistinguishable from a
+        // successful one, which is the defect that produced a false OS_ALLOWED in
+        // the first subject run.
+        if (scratch.Length > 0)
+        {
+            try
+            {
+                string p = Path.Combine(scratch, "p.txt");
+                if (File.Exists(p)) { File.Delete(p); Console.WriteLine("probe=cleanup_p_txt result=OS_ALLOWED"); }
+                else Console.WriteLine("probe=cleanup_p_txt result=NOT_PRESENT");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("probe=cleanup_p_txt result=" +
+                    (IsAccessDenied(ex) ? "OS_DENIED" : "ERROR") +
+                    " " + ex.GetType().Name);
+            }
+
+            foreach (string name in new[] {
+                "m016_child_create_dir", "m016_child_delete_dir", "childdir" })
+            {
+                string dir = Path.Combine(scratch, name);
+                try
+                {
+                    if (Directory.Exists(dir))
+                    {
+                        Directory.Delete(dir, true);
+                        Console.WriteLine("probe=cleanup_childdir result=OS_ALLOWED name=" + name);
+                    }
+                    else Console.WriteLine("probe=cleanup_childdir result=NOT_PRESENT name=" + name);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("probe=cleanup_childdir result=" +
+                        (IsAccessDenied(ex) ? "OS_DENIED" : "ERROR") +
+                        " name=" + name + " " + ex.GetType().Name);
+                }
+            }
+        }
         string workspaceFile = Path.Combine(workspace, "probe_workspace.txt");
         try { if (File.Exists(workspaceFile)) File.Delete(workspaceFile); }
         catch (Exception) { }

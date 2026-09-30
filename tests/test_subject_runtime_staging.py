@@ -214,7 +214,7 @@ class TestStagingPreconditions:
         What must never appear is a real runtime, a model, or any llama binary,
         anywhere in the repository.
         """
-        permitted = {"m016_disposable_target.exe"}
+        permitted = {"m016_disposable_target.exe", "m016_subjectrun_fixture.exe"}
         staging = REPO / "subject_runtime"
         if staging.exists():
             assert list(staging.rglob("*")), "the boundary should have subtrees"

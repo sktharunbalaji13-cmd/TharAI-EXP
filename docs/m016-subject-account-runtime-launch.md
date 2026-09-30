@@ -390,6 +390,104 @@ A ReadOnly fixture is now reported as `staged_target_readonly=True` and its
 probe-owned copies are normalised, so the cause stays attributable to an
 attribute rather than being read as a permission result.
 
+## First real subject boundary run: PARTIALLY_VERIFIED
+
+A human ran the harness interactively via `runas.exe`. This is the first time a
+real process ran inside the M015 boundary and asked Windows questions.
+
+**Classification: `SUBJECT_BOUNDARY_STATUS = PARTIALLY_VERIFIED`.** Not
+`STAGING_VERIFIED_BY_SUBJECT`, not `FULL_BOUNDARY_PASS`.
+
+### Identity: verified
+
+```
+user_sid=S-1-5-21-2406520953-1060965512-844951592-1022
+account_name=THARUNBALAJI-LA\BABY_AI_TEST
+integrity_level=MEDIUM
+integrity_level_independent=MEDIUM
+integrity_paths_agree=true
+```
+
+Read from the live token. Not inferred from arguments or configuration.
+
+### What the OS actually established — and stands
+
+The subject **could not**, anywhere inside `subject_runtime`:
+
+```
+traverse_directory  enumerate_runtime  enumerate_model  enumerate_config
+modify_acl  create_file_in_staging_scratch
+modify_staged_executable  append_staged_executable  delete_staged_executable
+rename_staged_executable  replace_staged_executable
+create_child_executable_beside_runtime  create_child_directory
+```
+
+all `OS_DENIED winerror=5`. And it retained full use of the intentionally
+writable `baby_workspace`: `workspace_write`, `workspace_read`, `workspace_delete`
+all `OS_ALLOWED`.
+
+These are genuine observations against real objects and are not retracted.
+
+### Four defects the run exposed
+
+**1. `read_disposable_file=OS_ALLOWED` was true but tested the wrong object.**
+The target was `baby_workspace\m016_probe.exe` — the *writable* experimentation
+area — not anything in `subject_runtime`. Nothing in the output named the file, so
+the line sat next to thirteen denials and read as evidence about the boundary. The
+probe now echoes `read_file_target=` and `read_file_bytes_observed=` so the object
+is named in the output itself.
+
+**2. `delete_child_directory=OS_ALLOWED` was a no-op reported as success.** The
+directory had never been created — creation had been denied — and the delete was
+guarded by `if (Directory.Exists(...))` *inside the lambda that counted success*.
+The guard skipped the work; the lambda still counted it. So "the subject could not
+create a directory" was reported as "the subject could delete a directory", which
+is the opposite of the truth. The subject has **no** directory-delete capability
+here; the harness never established that.
+
+Two distinct fixtures now exist, the delete fixture is created through the same
+guarded path as the create fixture, and an absent fixture reports
+`NOT_TESTABLE reason=fixture_absent`.
+
+**3. `restore_acl_target_attributes=ERROR` was correct behaviour reported as a
+fault.** The subject holds no `FILE_WRITE_ATTRIBUTES` under M015, so it cannot
+undo the `ReadOnly` bit the ACL test set. **That refusal is evidence the boundary
+works.** It is now reported as `EXPECTED_OS_DENIED` with a note that operator-side
+restoration is required. No privilege was added to let the subject tidy up after
+itself — that would have granted the exact capability the boundary withholds.
+
+**4. The crash.** `Directory.GetFiles` reports access-denied as a plain
+`IOException` carrying `ERROR_ACCESS_DENIED`, but the probe's `Run` only caught
+`UnauthorizedAccessException`. The subject cannot list `runtime\`, so the unguarded
+cleanup call threw — *after* every result had been recorded. The 21 results
+survived in the output file; the cleanup report and the process exit did not.
+
+`Run` now handles `IOException` and classifies winerror 5 as `OS_DENIED`.
+
+### Cleanup design under a subject that cannot enumerate
+
+The subject cannot list its own scratch directory, so it cannot discover its own
+artefacts there. The ACL is **not** weakened to work around this. Instead:
+
+```
+cleanup_state=CLEANUP_NOT_PERMITTED
+cleanup_operator_followup=m016_copy_<run_token>_*
+```
+
+The probe names the exact prefix so an operator can finish the job afterwards, and
+reports `cleanup_owned_copies_removed` / `_failed` separately. In this run the
+subject created nothing, so there was nothing to clean — a fact the report now
+states rather than one that surfaces as a crash.
+
+Ownership is unchanged: every artefact name embeds the per-invocation `run_token`,
+so cleanup can only ever match what that invocation created.
+
+### What a corrected subject run would still need to establish
+
+The read test *inside* `subject_runtime`, a delete test with a fixture that
+actually exists, and a completed cleanup report. Until those run, the boundary is
+constrained but not fully characterised.
+
 ## Residual blockers
 
 1. `SeImpersonatePrivilege` absent → blocks `CreateProcessWithLogonW`.

@@ -2421,3 +2421,81 @@ next gate is whether the corrected harness produces trustworthy operator
 OS_ALLOWED results while preserving fixture ownership and cleanup.
 
 Unrelated untracked tooling and the pre-existing .gitignore edit remain untouched.
+
+## M016: first real BABY_AI_TEST boundary run -- PARTIALLY_VERIFIED
+
+Milestone: M016. Subject process launched: YES, interactively by the human.
+Classification: SUBJECT_BOUNDARY_STATUS = PARTIALLY_VERIFIED. Explicitly NOT
+claimed: STAGING_VERIFIED_BY_SUBJECT, FULL_BOUNDARY_PASS. Second subject run: NO.
+
+This is the first time a real process ran inside the M015 boundary and asked
+Windows questions. Identity is verified: user_sid
+S-1-5-21-2406520953-1060965512-844951592-1022, account_name
+THARUNBALAJI-LA\BABY_AI_TEST, integrity_level=MEDIUM with both paths agreeing,
+all read from the live token rather than from arguments or configuration.
+
+The OS established, and these stand: the subject could not traverse, enumerate,
+write, modify, append, delete, rename, replace, spawn a child executable, or
+create a directory anywhere inside subject_runtime -- thirteen OS_DENIED
+winerror=5 results -- while retaining full use of the intentionally writable
+baby_workspace, where workspace write, read and delete all returned OS_ALLOWED.
+
+Four defects the run exposed, each traced to a specific object and operation
+rather than to an expectation.
+
+Read test. read_disposable_file=OS_ALLOWED was true but tested the wrong object.
+The target was baby_workspace\m016_probe.exe, the writable experimentation area,
+not anything in subject_runtime, and nothing in the output named the file, so the
+line sat beside thirteen denials and read as evidence about the boundary. The
+probe now echoes read_file_target= and read_file_bytes_observed= so the object
+that produced a result is named in the output itself.
+
+Child directory. delete_child_directory=OS_ALLOWED was a no-op reported as
+success. The directory had never been created, creation having been denied, and
+the delete was guarded by if (Directory.Exists(...)) inside the lambda that
+counted success. The guard skipped the work and the lambda still counted it, so
+"could not create a directory" was reported as "could delete a directory", the
+opposite of the truth. The subject has no directory-delete capability here and the
+harness never established that. Two distinct fixtures now exist, the delete
+fixture is created through the same guarded path as the create fixture, and an
+absent fixture reports NOT_TESTABLE reason=fixture_absent.
+
+Attribute restoration. restore_acl_target_attributes=ERROR was correct behaviour
+reported as a fault: the subject holds no FILE_WRITE_ATTRIBUTES under M015 and
+cannot undo the ReadOnly bit the ACL test set, and that refusal is itself evidence
+the boundary works. It is now reported as EXPECTED_OS_DENIED with a note that
+operator-side restoration is required. No privilege was granted to let the subject
+tidy up after itself, since that would grant exactly the capability the boundary
+withholds.
+
+Crash. Directory.GetFiles reports access-denied as a plain IOException carrying
+ERROR_ACCESS_DENIED, but Run only caught UnauthorizedAccessException. The subject
+cannot list runtime\, so the unguarded cleanup call threw after every result had
+already been recorded: the 21 results survived in the output file while the cleanup
+report and the process exit did not. Run now handles IOException and classifies
+winerror 5 as OS_DENIED.
+
+Cleanup under a subject that cannot enumerate. The subject cannot discover its own
+scratch artefacts because it cannot list the directory, and the ACL is not weakened
+to work around that. The probe reports cleanup_state=CLEANUP_NOT_PERMITTED together
+with cleanup_operator_followup naming the exact m016_copy_<run_token>_* prefix for
+operator-side completion, and reports removed and failed counts separately. In this
+run the subject created nothing, so there was nothing to clean, which the report now
+states rather than surfacing as a crash. Ownership is unchanged: every artefact name
+embeds the per-invocation run_token.
+
+A C# language-version constraint surfaced during the fix: Add-Type compiles with the
+C# 5 compiler inside PowerShell 5.1, which rejects catch (...) when (...) exception
+filters. Those were removed rather than worked around.
+
+Regression: M015 boundary still STAGING_VERIFIED; M005's 13 protected paths intact
+with digests readable; no runtime, no model, no llama-server execution, no
+inference, no birth, no ACL modified, no privilege granted, no network change. Full
+portable suite 1930 passed / 2 warnings / 749 subtests. Host security 15 failed /
+10 passed / 13 subtests, unchanged and still all NOT_TESTABLE.
+
+No second BABY_AI_TEST experiment was run. What a corrected subject run would still
+need to establish: the read test inside subject_runtime, a delete test with a fixture
+that exists, and a completed cleanup report.
+
+Unrelated untracked tooling and the pre-existing .gitignore edit remain untouched.
