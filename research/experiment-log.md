@@ -1213,3 +1213,136 @@ birth record, no subject attached, no model, no weights, no autonomous process.
 The observer still reports NO EXPERIMENTAL SUBJECT ATTACHED. M010 was not
 started.
 
+---
+
+## 2026-09-30 - Milestone 010: foundation model acquisition, verification, and runtime validation
+
+### What was built
+
+The input side of Milestone 009's birth gate: explicit artifact identity from
+real bytes, external digest handling, runtime identity from the binary's own
+version output, resource admission with a three-valued answer, one real
+inference characterised honestly, and the boundary the runtime process has.
+`foundation/` plus two test files and an Observatory section.
+
+MODEL_NOT_CONFIGURED. REAL_INFERENCE = NOT_TESTABLE. SUBJECT = NONE. BIRTH =
+NOT_PERFORMED. No model was downloaded, searched for, or selected, because none
+exists on this host and the milestone forbids the laboratory from choosing one.
+
+### The acquisition policy is code
+
+"Never choose your own substrate" is the repository's load-bearing constraint,
+and prose decays the first time a milestone is blocked on it. So it is a module
+with three terminal states and a twelve-entry inventory of refused routes, and a
+refusal that raises rather than returns. Three tests close the loop: the weights
+directory filled with three real GGUFs still yields MODEL_NOT_CONFIGURED, because
+discovery is not a question the package asks; a declaration naming a missing
+artifact yields ARTIFACT_MISSING and the file still does not exist afterwards;
+and no module defines a function named after a forbidden route.
+
+### Three digest claims, kept apart
+
+Computed local digest establishes that a file is still that file. An externally
+supplied digest is a publisher's word, and only a human can supply one.
+VERIFIED_MATCH is the two agreeing, and it is the only basis on which an artifact
+may be called verified. When no external digest exists the status is
+NO_EXTERNAL_DIGEST_SUPPLIED, and the Observatory renders it amber rather than
+green, because it is a weaker claim and must look weaker.
+
+The manifest is a separate file from the declaration on purpose. Combined, a
+human who mistyped a digest would satisfy his own mistake and "externally
+verified" would mean "consistent with something written five minutes ago by the
+same person."
+
+### A template that was a working forgery
+
+The manifest template writes placeholder text where a digest belongs. Accepted
+naively, submitting it unfilled records an "externally supplied" digest
+consisting of the words FILL IN. The loader now rejects any non-64-hex value,
+reports both the rejection and the text as written, and separates "unfilled
+placeholder" from "well-formed digest with no source" -- the latter being
+unattributed and therefore not external provenance either.
+
+### Model identity is not runtime identity
+
+M is a file identified by its bytes. R is an executable identified by its path,
+digest, and a version read from its own --version output. M != R. A verified
+model implies nothing about the runtime that will load it. The most common way a
+laboratory overstates itself is reporting "the model works" when what was shown
+was "a binary ran a file." Real-inference availability requires all of: a human
+declaration, a verified artifact, and a verified runtime.
+
+### A bug this milestone found in itself
+
+`validation.py` called `resolve_gpu_usage` with the reported backend but never
+passed the offload evidence, so CONFIRMED was unreachable and GPU use could
+never be reported even when the runtime had plainly performed it. The M006
+adapter was separately discarding `parsed.diagnostics`, the only place that
+evidence exists. Both fixed; M006's 71 tests unaffected.
+
+Verified through the real parse path: CUDA plus an offload line gives CONFIRMED;
+CUDA alone gives REQUESTED_NOT_CONFIRMED; CPU with layers requested gives
+REQUESTED_NOT_CONFIRMED and reports that the run completed on CPU. Requested is
+not executed, and the two are never collapsed.
+
+### Honest token accounting, and an M003 gap left visible
+
+Counts are OBSERVED only when the runtime printed them; a total is DERIVED
+because it is arithmetic on two observed values. An unrecognised shape yields
+UNAVAILABLE with a reason.
+
+M003's completion-token patterns do not recognise llama.cpp's `eval time = X ms
+/ N runs` form, so on a real build generated-token counts may report
+UNAVAILABLE. Recorded rather than papered over: the honest reading is that the
+patterns are incomplete, not that the count should be guessed. A test pins the
+current behaviour so the gap stays visible.
+
+### The boundary, at the strength it can be shown
+
+Three strengths, never collapsed. ENFORCED: private keys and the control token
+are denied by the M005 boundary, verified by human cross-process execution, and
+deliberately not re-tested from inside the process whose access is in question.
+STRUCTURAL: the runtime path imports no network module, reaches no shell or
+detached process, and cannot reach subject or birth at all; subprocess.run is
+classified as a bounded invocation rather than a shell. NOT_ESTABLISHED:
+filesystem restriction, because narrowing the runtime would need tier 3, which
+does not exist -- M005 binds a file boundary to an account, and nothing yet runs
+as that account.
+
+Protected-evidence integrity is checked without violating it: digest before and
+after, compare. A write attempt to prove writes are blocked would itself be a
+write attempt.
+
+### The bans, as import-graph facts
+
+No module imports subject. No module imports the ceremony, gate, or record
+writer. No memory substrate, no learning library, no optimiser, no weight
+update, no eval/exec/compile, no network or acquisition library. Walked from the
+AST, because a module that documented the ban would pass a text scan. The
+positive form is the immutability check: digest before, digest after, equality
+required, and a mutation is reported as ARTIFACT MUTATED with a refusal to
+continue.
+
+### The M003 vocabulary guard caught me
+
+My first draft of the Observatory section spelled out one of the banned
+psychological words while explaining that the section cannot display it. The
+existing M003 guard failed the build, correctly. The word has no business in a
+read-only renderer, so the note was rewritten rather than the guard relaxed.
+
+### What remains not testable here
+
+No real inference, because no model and no llama.cpp binary exist on this host.
+The end-to-end path was exercised against a synthetic fixture with a real 4 MiB
+GGUF, a real computed digest, a real binary probe, and a stubbed process runner.
+That is STUB_RUNTIME and is labelled as such; it is how the GPU-evidence bug was
+found, and it is not a real inference.
+
+### Unchanged
+
+M005 boundary intact at 11/11, workspaces un-denied. Event chain intact, 20
+events. Ledger 14 entries. No BABY_AI key, no birth record, no subject attached,
+no model, no weights, no autonomous process. The M009 birth gate still reports
+BLOCKED on MODEL_NOT_CONFIGURED across all fourteen prerequisites. M011 not
+started.
+

@@ -60,6 +60,7 @@ class ObservatorySession:
     def __post_init__(self) -> None:
         self.store = EventStore(self.paths.event_store, clock=self.clock)
         self._birth = self._read_birth()
+        self._foundation = self._read_foundation()
         self.registry = SubjectRegistry(self.keyring, self._birth)
         self.reader = ObservatoryReader(store=self.store, clock=self.clock)
         self.attributor = Attributor(
@@ -95,6 +96,36 @@ class ObservatorySession:
                 "read_error": str(exc),
             }
 
+    def _read_foundation(self) -> dict[str, Any]:
+        """Ask the M010 foundation layer what it reports, tolerating failure.
+
+        Read with ``with_runtime_probe=False`` on purpose. Probing means
+        executing the configured binary, and a view that can trigger the
+        execution it is reporting on is not a view -- it would also make polling
+        this display far more expensive than reading a file. The panel therefore
+        reports the runtime as unprobed and leaves the probe to the validation
+        command, which records it properly.
+        """
+        from babylab.errors import BabyLabError
+
+        try:
+            from foundation.status import foundation_status
+
+            return foundation_status(
+                self.paths.root, with_runtime_probe=False
+            ).to_dict()
+        except (BabyLabError, OSError, ValueError) as exc:
+            return {
+                "model_configured": None,
+                "artifact": {"status": "UNAVAILABLE", "verified": False},
+                "runtime": {"state": "UNAVAILABLE"},
+                "detail": f"the foundation layer could not be read: {exc}",
+                "explicitly_not": {
+                    "subject": "no subject exists",
+                    "birth": "birth was not performed",
+                },
+            }
+
     # -- updating ---------------------------------------------------------
     def update(self) -> ObservatorySnapshot:
         """Consume new events and return the resulting snapshot.
@@ -125,6 +156,7 @@ class ObservatorySession:
             timestamp=self.clock.timestamp(),
             recent_attributions=self._recent[-10:],
             birth=self._birth,
+            foundation=self._foundation,
         )
 
     def render(self, options: RenderOptions | None = None) -> str:

@@ -347,7 +347,21 @@ class LlamaCppAdapter:
             load_duration_ms=self._load_duration_ms,
             inference_duration_ms=duration,
             tokens_per_second=compute_throughput(completion_tokens, duration),
-            resources={"backend": Measurement.observed(parsed.backend, source="runtime")},
+            resources={
+                "backend": Measurement.observed(parsed.backend, source="runtime"),
+                # The runtime's own stderr is the only evidence that can confirm
+                # a GPU offload actually happened. M010 needs it to tell
+                # "layers requested" from "layers executed", and dropping it here
+                # would make that distinction impossible to establish from
+                # outside this method.
+                "stderr_tail": Measurement.observed(
+                    parsed.diagnostics.get("stderr_tail", ""), source="runtime stderr"
+                ),
+                "token_counts_source": Measurement.observed(
+                    parsed.diagnostics.get("token_counts_source", "UNAVAILABLE"),
+                    source="runtime output",
+                ),
+            },
             error=parsed.error,
         )
 

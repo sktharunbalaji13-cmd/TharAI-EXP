@@ -1,0 +1,165 @@
+{
+  "schema": "babylab/m010-verification/v1",
+  "milestone": "M010",
+  "model_acquisition": {
+    "state": "MODEL_NOT_CONFIGURED",
+    "human_selection_required": true,
+    "automatic_acquisition_exists": false,
+    "forbidden_routes_refused": 12,
+    "network_required": false,
+    "searched_for_models": false,
+    "downloaded_anything": false
+  },
+  "model_artifact": {
+    "status": "NOT_CONFIGURED",
+    "path_explicit": true,
+    "weights_boundary": "human_control/experiment_config/weights",
+    "recursive_discovery": false,
+    "fallback_search": false
+  },
+  "artifact_identity": {
+    "identity_record_exists": true,
+    "sha256_computed_from_bytes": true,
+    "digest_claims_distinguished": [
+      "COMPUTED_LOCAL_DIGEST",
+      "EXTERNALLY_SUPPLIED_DIGEST",
+      "VERIFIED_MATCH"
+    ],
+    "self_consistent_hash_never_called_verified": true,
+    "manifest_separate_from_declaration": true,
+    "template_placeholder_rejected": true,
+    "mismatch_always_refused": true
+  },
+  "runtime": {
+    "state": "NOT_CONFIGURED",
+    "identity_record_exists": true,
+    "version_source": "binary --version output",
+    "binary_digest_basis": "sha256 over the named binary",
+    "path_search": false,
+    "silent_substitution": false,
+    "model_identity_is_separate": true
+  },
+  "real_inference": {
+    "status": "NOT_TESTABLE",
+    "reason": "no model artifact and no llama.cpp binary exist on this host",
+    "stub_and_real_are_distinct": true,
+    "kind_is_an_explicit_argument": true,
+    "prompt_neutral": true,
+    "prompt_digest_recorded": true,
+    "output_digest_recorded": true,
+    "output_class": "FOUNDATION_MODEL_OUTPUT",
+    "output_is_not": [
+      "SUBJECT_OUTPUT",
+      "EXPERIENCE",
+      "MEMORY",
+      "LEARNING",
+      "BABY_AI_OUTPUT"
+    ]
+  },
+  "token_accounting": {
+    "honest": true,
+    "observed_only_when_reported_by_runtime": true,
+    "total_is_derived": true,
+    "estimates_never_presented_as_observed": true,
+    "m003_gap": "M003's completion-token patterns do not recognise llama.cpp's 'eval time = X ms / N runs' form; a real build may report UNAVAILABLE for generated tokens. Recorded, not guessed around."
+  },
+  "resource_telemetry": {
+    "observed_derived_unavailable_distinguished": true,
+    "vram_source": "nvidia-smi",
+    "vram_never_inferred_from_artifact_size": true,
+    "tokens_per_second_only_when_measured": true
+  },
+  "gpu": {
+    "requested_is_not_executed": true,
+    "confirmation_requires_two_evidence_pieces": true,
+    "verified_cases": {
+      "cuda_plus_offload_line": "CONFIRMED",
+      "cuda_without_offload_line": "REQUESTED_NOT_CONFIRMED",
+      "cpu_with_layers_requested": "REQUESTED_NOT_CONFIRMED"
+    },
+    "bug_found_and_fixed": "validation.py never passed the offload evidence, making CONFIRMED unreachable; the M006 adapter discarded parsed.diagnostics"
+  },
+  "admission": {
+    "states": [
+      "ADMIT",
+      "REFUSE",
+      "UNKNOWN"
+    ],
+    "unknown_is_not_admit": true,
+    "unknown_authorises_nothing": true
+  },
+  "determinism": {
+    "characterised": true,
+    "baseline": "greedy, temperature 0, top_k 1, fixed seed",
+    "no_repeat_reports_not_attempted": true,
+    "nondeterminism_hidden": false,
+    "universal_determinism_claimed": false
+  },
+  "immutability": {
+    "digest_before": true,
+    "digest_after": true,
+    "equality_required": true,
+    "mutation_is_failure": true
+  },
+  "isolation": {
+    "strengths_reported_separately": true,
+    "enforced": [
+      "access_private_keys",
+      "access_control_token",
+      "modify_provenance",
+      "modify_protected_evidence"
+    ],
+    "structural": [
+      "open_network_connection",
+      "start_autonomous_process",
+      "create_subject",
+      "perform_birth",
+      "modify_acls",
+      "obtain_administrator_privileges",
+      "modify_subject_identity",
+      "modify_environment_history"
+    ],
+    "not_established": [
+      "filesystem_restriction"
+    ],
+    "not_established_reason": "narrowing the runtime would require tier 3, which is not implemented; M005 binds a file boundary to an account and nothing yet runs as that account",
+    "network_policy": "LOCAL_ONLY_NO_FETCH"
+  },
+  "prohibitions": {
+    "subject_created": false,
+    "birth_performed": false,
+    "memory": false,
+    "learning": false,
+    "tools": false,
+    "self_modification": false,
+    "autonomy": false,
+    "network_inference": false,
+    "provenance_altered_by_output": false
+  },
+  "observatory": {
+    "foundation_section_present": true,
+    "probe_not_triggered_by_view": true,
+    "psychological_vocabulary_rendered": false,
+    "birth_shown_as_not_performed": true
+  },
+  "critical_final_state": {
+    "subject": "NONE",
+    "birth": "NOT_PERFORMED",
+    "autonomy": "NONE",
+    "memory": "NONE",
+    "learning": "NONE",
+    "self_modification": "NONE",
+    "baby_ai_key": false,
+    "model_artifact": false
+  },
+  "tests": {
+    "m010_foundation": "70 passed",
+    "m010_boundary": "10 passed",
+    "portable_suite": "1331 passed, 747 subtests",
+    "host_security_suite": "15 failed, 10 passed (harness NOT_TESTABLE, unchanged since M005 closure)"
+  },
+  "not_testable_conditions": [
+    "real inference against a real model: no artifact exists",
+    "runtime executing as the subject account: tier 3 not implemented"
+  ]
+}

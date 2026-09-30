@@ -420,6 +420,190 @@ class ObservatoryRenderer:
 
         return lines
 
+    def foundation_section(self, snapshot: ObservatorySnapshot) -> list[str]:
+        """Milestone 010: the foundation-model runtime, as measurements.
+
+        Placed directly beneath the birth section because the two are the same
+        story told in order: this is the substrate, that is what the substrate
+        would be attached to. Keeping them adjacent is what stops a reader from
+        treating "the model works" as "the subject exists".
+
+        Three rules govern this section.
+
+        First, it displays only what was measured. Every absent value renders
+        ``UNAVAILABLE``, and no field here can render a psychological
+        characteristic, because there is no field for one. The M003 vocabulary
+        ban applies to this section as strictly as to the cognitive panel: a
+        trait with no measurement behind it must not be spelled here even to say
+        that it is absent, because the word itself would be the only place the
+        concept appeared.
+
+        Second, it never rounds a claim up. A model whose bytes hash but has no
+        external digest is shown as locally computed and *not* verified. A
+        runtime that was asked to use the GPU but never confirmed it is shown as
+        requested, not confirmed.
+
+        Third, it says what a model running is not. The closing line is not
+        decoration; it is the distinction the entire milestone turns on, placed
+        where a reader who has just seen a verified model will encounter it.
+        """
+        foundation = snapshot.foundation or {}
+        if not foundation:
+            return []
+        lines = [self._rule("FOUNDATION RUNTIME")]
+
+        configured = foundation.get("model_configured")
+        if configured is None:
+            lines.append(self._kv("model configured", self._c("UNAVAILABLE", DIM)))
+        else:
+            lines.append(
+                self._kv(
+                    "model configured",
+                    self._c("YES", FG_GREEN) if configured
+                    else self._c("NO  (no model declaration)", FG_YELLOW),
+                )
+            )
+
+        artifact = foundation.get("artifact") or {}
+        status = str(artifact.get("status") or "UNAVAILABLE")
+        # A locally computed digest with no external source is deliberately not
+        # coloured as a success. It is a weaker claim and must look weaker.
+        if status in {"VERIFIED_MATCH"}:
+            colour = FG_GREEN
+        elif status in {"COMPUTED_LOCAL_DIGEST", "NO_EXTERNAL_DIGEST_SUPPLIED"}:
+            colour = FG_YELLOW
+        elif status in {"EXTERNAL_DIGEST_MISMATCH", "UNSUPPORTED_FORMAT",
+                        "ARTIFACT_MISSING", "ARTIFACT_TOO_SMALL"}:
+            colour = FG_RED
+        else:
+            colour = DIM
+        lines.append(self._kv("artifact", self._c(status, colour)))
+
+        verified = artifact.get("verified")
+        lines.append(
+            self._kv(
+                "artifact verified",
+                self._c("YES (external digest matched)", FG_GREEN)
+                if verified is True
+                else self._c("NO", FG_YELLOW) if verified is False
+                else self._c("UNAVAILABLE", DIM),
+            )
+        )
+
+        external = artifact.get("external_sha256")
+        basis = artifact.get("external_digest_source") or "none"
+        lines.append(
+            self._kv(
+                "external digest",
+                f"{(external[:16] + '...') if external else 'NOT SUPPLIED'}  ({basis})",
+            )
+        )
+        computed = artifact.get("computed_sha256")
+        lines.append(
+            self._kv(
+                "computed digest",
+                (computed[:16] + "...") if computed else self._c("UNAVAILABLE", DIM),
+            )
+        )
+
+        runtime = foundation.get("runtime") or {}
+        rstate = str(runtime.get("state") or "UNAVAILABLE")
+        rcolour = FG_GREEN if rstate == "VERIFIED" else (FG_RED if rstate in {
+            "BINARY_MISSING", "PROBE_FAILED", "NOT_EXECUTABLE"} else DIM)
+        lines.append(self._kv("runtime", self._c(rstate, rcolour)))
+        lines.append(
+            self._kv(
+                "runtime version",
+                str(runtime.get("version") or self._c("UNAVAILABLE", DIM)),
+            )
+        )
+
+        gpu = str(runtime.get("gpu_usage") or "UNAVAILABLE")
+        # CONFIRMED is the only state that may be shown as a success. A
+        # requested-but-unconfirmed offload is shown as exactly that.
+        gpu_colour = FG_GREEN if gpu == "CONFIRMED" else (
+            FG_YELLOW if gpu in {"REQUESTED_NOT_CONFIRMED", "UNAVAILABLE"} else DIM)
+        lines.append(self._kv("gpu usage", self._c(gpu, gpu_colour)))
+
+        vram = foundation.get("vram") or {}
+        if not vram:
+            lines.append(self._kv("vram", self._c("UNAVAILABLE", DIM)))
+        else:
+            total = vram.get("total_bytes")
+            free = vram.get("free_bytes")
+            total_text = (
+                f"{total / (1024 ** 3):.1f} GiB total" if isinstance(total, int)
+                else self._c("UNAVAILABLE", DIM)
+            )
+            free_text = (
+                f"  {free / (1024 ** 3):.1f} GiB free" if isinstance(free, int) else ""
+            )
+            lines.append(self._kv("vram", f"{total_text}{free_text}"))
+
+        inference = foundation.get("inference") or {}
+        if inference:
+            outcome = str(inference.get("outcome") or "NOT_RUN")
+            icolour = FG_GREEN if outcome == "COMPLETED" else FG_YELLOW
+            lines.append(self._kv("inference", self._c(outcome, icolour)))
+            prompt_d = inference.get("prompt_sha256")
+            output_d = inference.get("output_sha256")
+            lines.append(
+                self._kv(
+                    "prompt digest",
+                    (prompt_d[:16] + "...") if prompt_d else self._c("UNAVAILABLE", DIM),
+                )
+            )
+            lines.append(
+                self._kv(
+                    "output digest",
+                    (output_d[:16] + "...") if output_d else self._c("UNAVAILABLE", DIM),
+                )
+            )
+            accounting = inference.get("token_accounting") or {}
+            if accounting:
+                def _count(block: Any) -> str:
+                    if not isinstance(block, dict) or not block.get("value"):
+                        return "UNAVAILABLE"
+                    return f"{block['value']} {block.get('status', '?').lower()}"
+
+                lines.append(
+                    self._kv(
+                        "tokens (p/gen/total)",
+                        f"{_count(accounting.get('prompt_tokens'))}"
+                        f" / {_count(accounting.get('completion_tokens'))}"
+                        f" / {_count(accounting.get('total_tokens'))}",
+                    )
+                )
+
+        isolation = foundation.get("isolation") or {}
+        if isolation:
+            lines.append(
+                self._kv(
+                    "runtime boundary",
+                    f"{isolation.get('enforced', 0)} enforced"
+                    f" / {isolation.get('structural', 0)} structural"
+                    f" / {len(isolation.get('not_established') or [])} not established",
+                )
+            )
+
+        not_clause = foundation.get("explicitly_not") or {}
+        if not_clause:
+            lines.append(
+                self._kv(
+                    "this is not",
+                    self._c("a subject, an experience, or learning", FG_YELLOW),
+                )
+            )
+            if not_clause.get("birth"):
+                lines.append(
+                    self._kv(
+                        "birth",
+                        self._c("NOT_PERFORMED (a separate gated event)", FG_YELLOW),
+                    )
+                )
+
+        return lines
+
     def footer(self) -> list[str]:
         return [
             self._rule(),
@@ -433,6 +617,7 @@ class ObservatoryRenderer:
     def render(self, snapshot: ObservatorySnapshot) -> str:
         sections: list[list[str]] = [self.header(snapshot)]
         sections.append(self.birth_section(snapshot))
+        sections.append(self.foundation_section(snapshot))
         sections.append(self.state_section(snapshot))
         sections.append(self.graph_section(snapshot))
         sections.append(self.events_section(snapshot))

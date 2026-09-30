@@ -63,6 +63,11 @@ class ObservatorySnapshot:
     #: a plain dict supplied by the caller, never computed by the view, and an
     #: absent key renders as UNAVAILABLE rather than as an inferred value.
     os_boundary: dict[str, Any] = field(default_factory=dict)
+    #: Milestone 010: the measured foundation-model runtime. Same discipline
+    #: again. A dict, never computed here -- importing the runtime to measure it
+    #: would put a model loader inside a view that must be unable to write, and
+    #: would let the display trigger the binary execution it is reporting on.
+    foundation: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """The serialisable form. This is the API contract."""
@@ -77,6 +82,7 @@ class ObservatorySnapshot:
             "birth": dict(self.birth),
             "trust": dict(self.trust),
             "os_boundary": dict(self.os_boundary),
+            "foundation": dict(self.foundation),
             "state": self.state.to_dict(),
             "graph": self.graph.to_dict(),
             "recent_events": [a.to_dict() for a in self.recent_events],
@@ -121,6 +127,7 @@ def compose_snapshot(
     recent_attributions: list[Attribution] | None = None,
     faults: list[str] | None = None,
     birth: dict[str, Any] | None = None,
+    foundation: dict[str, Any] | None = None,
 ) -> ObservatorySnapshot:
     """Build a snapshot from the three collaborating components.
 
@@ -141,4 +148,5 @@ def compose_snapshot(
         faults=list(faults or []),
         generated_at=timestamp,
         birth=dict(birth or {}),
+        foundation=dict(foundation or {}),
     )
