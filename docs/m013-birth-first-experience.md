@@ -1,4 +1,4 @@
-﻿# M013 â€” Real birth ceremony and the first real experience
+# M013 â€” Real birth ceremony and the first real experience
 
 ## What this milestone was for
 

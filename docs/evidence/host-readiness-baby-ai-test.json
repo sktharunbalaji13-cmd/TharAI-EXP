@@ -1,0 +1,172 @@
+{
+  "schema": "babylab/host-readiness/v1",
+  "milestone": "NONE (investigation, not M015)",
+  "generated_at": "2026-09-30T10:59:33.523Z",
+  "host_readiness": "NOT_TESTABLE",
+  "real_process_identity": "NOT_TESTABLE",
+  "account": {
+    "account": "BABY_AI_TEST",
+    "expected_sid": "S-1-5-21-2406520953-1060965512-844951592-1022",
+    "observed": {
+      "name": "BABY_AI_TEST",
+      "enabled": "True",
+      "password_required": "False",
+      "password_last_set": "09/27/2026 13:27:23",
+      "password_expires": "11/08/2026 13:27:23",
+      "last_logon": "09/27/2026 22:04:51",
+      "description": "(none)"
+    },
+    "sid": "S-1-5-21-2406520953-1060965512-844951592-1022",
+    "sid_matches": true,
+    "local_group_membership": "NONE",
+    "global_group_membership": "UNAVAILABLE (net user reports *None)",
+    "inherits_no_group_privilege": true,
+    "read_failed": false
+  },
+  "harness": {
+    "pid": 10100,
+    "required_to_impersonate": [
+      "SeImpersonatePrivilege",
+      "SeAssignPrimaryTokenPrivilege"
+    ],
+    "privileges_we_refuse_to_acquire": [
+      "SeImpersonatePrivilege",
+      "SeAssignPrimaryTokenPrivilege"
+    ],
+    "notable_privileges_held": [],
+    "can_impersonate": false,
+    "integrity": "MEDIUM",
+    "elevated": false,
+    "detail": "pid 10100's token was read directly: user THARUNBALAJI-LA\\k.tharun balaji (S-1-5-21-2406520953-1060965512-844951592-1001), integrity MEDIUM, elevated False. The identity came from the token, not from anything the process said about itself."
+  },
+  "mechanisms": [
+    {
+      "mechanism": "impersonation via SeImpersonatePrivilege",
+      "readiness": "FAILED",
+      "detail": "the privilege is absent from this process's token, so it cannot be enabled (M005 observed ERROR_NOT_ALL_ASSIGNED / 1300). Acquiring it is refused regardless: it would let any process in the session assume any identity, which is a larger hole than the one it would close.",
+      "requires_privilege_we_refuse": [
+        "SeImpersonatePrivilege"
+      ],
+      "requires_human_action": "",
+      "requires_stored_credential": false,
+      "mutates_host": false,
+      "is_rejected": true,
+      "evidence": {}
+    },
+    {
+      "mechanism": "CreateProcessWithLogonW via SeAssignPrimaryTokenPrivilege",
+      "readiness": "FAILED",
+      "detail": "the privilege is absent, and acquiring it is refused. It is a credential-equivalent right: whoever holds it can create a token for any local account without that account's password.",
+      "requires_privilege_we_refuse": [
+        "SeAssignPrimaryTokenPrivilege"
+      ],
+      "requires_human_action": "",
+      "requires_stored_credential": false,
+      "mutates_host": false,
+      "is_rejected": true,
+      "evidence": {}
+    },
+    {
+      "mechanism": "S4U / LOGON32_LOGON_S4U2 (run without a password)",
+      "readiness": "FAILED",
+      "detail": "S4U deliberately needs no password, which is why it looks attractive -- and it needs SeImpersonatePrivilege to call, and SeTcbPrivilege to register a task that uses it. Both are absent and both are refused.",
+      "requires_privilege_we_refuse": [
+        "SeImpersonatePrivilege",
+        "SeTcbPrivilege"
+      ],
+      "requires_human_action": "",
+      "requires_stored_credential": false,
+      "mutates_host": false,
+      "is_rejected": true,
+      "evidence": {}
+    },
+    {
+      "mechanism": "Task Scheduler task registered for the subject account",
+      "readiness": "NOT_TESTABLE",
+      "detail": "registering a task that runs as another local account requires either that account's password in Task Scheduler's credential store, or an elevated registration using S4U. This process is not elevated, and the laboratory will not store a password or take elevation to create a persistent task.",
+      "requires_privilege_we_refuse": [],
+      "requires_human_action": "a human would have to register the task in an elevated console and enter the subject's password there. The laboratory does not do this and does not recommend it: a persistent task is a standing execution path, which is more capability than a one-shot human launch needs.",
+      "requires_stored_credential": true,
+      "mutates_host": true,
+      "is_rejected": true,
+      "evidence": {}
+    },
+    {
+      "mechanism": "Windows service running as the subject account",
+      "readiness": "FAILED",
+      "detail": "a service cannot run as an ordinary local account without a stored password, and creating a service needs elevation. A service would also be a persistent, always-on execution path, which is the opposite of the single controlled interaction M014 performs.",
+      "requires_privilege_we_refuse": [],
+      "requires_human_action": "",
+      "requires_stored_credential": true,
+      "mutates_host": true,
+      "is_rejected": true,
+      "evidence": {}
+    },
+    {
+      "mechanism": "WSL",
+      "readiness": "FAILED",
+      "detail": "WSL runs under the operator's Windows account and reaches the filesystem over 9p/DrvFs. M005 measured its identity as the operator's own (uid=1000 sktharun_balaji), so a WSL process cannot hold the subject's Windows token. It is not a candidate.",
+      "requires_privilege_we_refuse": [],
+      "requires_human_action": "",
+      "requires_stored_credential": false,
+      "mutates_host": false,
+      "is_rejected": false,
+      "evidence": {
+        "m005_wsl_probe": "docs/evidence/m005-wsl-probe.json"
+      }
+    },
+    {
+      "mechanism": "human-launched process via Start-Process -Credential",
+      "readiness": "NOT_TESTABLE",
+      "detail": "Windows establishes the token; the human types the password into a Windows prompt. The laboratory never receives, stores, or logs it. This is the mechanism M005 already used successfully, and it is the only one that produces a genuine subject token on this host without the laboratory acquiring a privilege or holding a secret. It is reported NOT_TESTABLE because this investigation did not perform a launch, and an unperformed launch is not a verified one.",
+      "requires_privilege_we_refuse": [],
+      "requires_human_action": "Start-Process -FilePath \"py\" -ArgumentList \"-3\", \"human_control/probe/subject_boundary_probe.py\" -Credential (Get-Credential -UserName \"THARUNBALAJI-LA\\BABY_AI_TEST\" -Message \"BABY_AI_TEST boundary probe (M014)\") -WorkingDirectory .",
+      "requires_stored_credential": false,
+      "mutates_host": false,
+      "is_rejected": false,
+      "evidence": {}
+    }
+  ],
+  "recommended_mechanism": "human-launched process via Start-Process -Credential, followed by independent token observation from the operator's session",
+  "required_human_action": "Start-Process -FilePath \"py\" -ArgumentList \"-3\", \"human_control/probe/subject_boundary_probe.py\" -Credential (Get-Credential -UserName \"THARUNBALAJI-LA\\BABY_AI_TEST\" -Message \"BABY_AI_TEST boundary probe (M014)\") -WorkingDirectory .",
+  "token_observation_proven": {
+    "method": "OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION) + OpenProcessToken(TOKEN_QUERY) + GetTokenInformation",
+    "verified_against": "a process the operator spawned (own child)",
+    "requires_elevation": false,
+    "requires_privilege": false,
+    "result": "VERIFIED -- SID and MEDIUM integrity read from a live token",
+    "cross_credential_openprocess": "NOT_TESTABLE (requires launching as the subject, which requires a credential we will not accept)"
+  },
+  "not_testable": [
+    "subject-account granted logon rights (secedit export needs elevation)",
+    "logon audit events 4624/4625 (Security log unreadable non-elevated)",
+    "cross-credential OpenProcess (untested by design)"
+  ],
+  "unchanged": {
+    "events": 20,
+    "event_chain_intact": true,
+    "provenance_entries": 14,
+    "birth_record_present": false,
+    "model_dir_present": false,
+    "privileges_granted": [],
+    "acl_changes": 0,
+    "subject_created": false,
+    "birth_performed": false,
+    "t_birth": "UNAVAILABLE",
+    "model_selected": false
+  },
+  "m014_status_unchanged": {
+    "status": "BLOCKED",
+    "stage": "declaration",
+    "subject_id": "NONE",
+    "t_birth": "UNAVAILABLE",
+    "first_experience": "NOT_PERFORMED"
+  },
+  "tests": {
+    "host_readiness": "48 passed",
+    "portable_suite": "1733 passed, 749 subtests passed",
+    "host_security": "15 failed, 10 passed, 13 subtests -- NOT_TESTABLE, harness cannot impersonate BABY_AI_TEST"
+  },
+  "m015": "NOT STARTED",
+  "probe_location": "scripts/subject_boundary_probe.py (tracked lab source; human_control/*/* is gitignored by policy)"
+}

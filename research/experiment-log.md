@@ -1,4 +1,4 @@
-﻿# Experiment log
+# Experiment log
 
 Dated record of what was actually done, what was observed, and what was decided.
 This is a research journal, not a changelog: it records reasoning and
@@ -1787,3 +1787,96 @@ reason, not disguised and not counted as a pass.
 
 M014 is implemented and verified. No birth occurred, and that is the correct state
 of this laboratory. M015 not started.
+
+---
+
+## 2026-09-30 - Host-readiness investigation: real BABY_AI_TEST execution
+
+An investigation, not a milestone. Nothing born, no subject, no T_birth, no
+experience, no key, no model selected, no ACL touched, no privilege granted. M014
+remains BLOCKED at stage declaration and was re-verified unchanged after.
+
+### The finding that changes the design
+
+M011/M013/M014 all reported the harness cannot impersonate BABY_AI_TEST. That is
+still true and still unfixable without a credential. But the conclusion drawn from
+it was too broad.
+
+The laboratory does not need to *become* the account in order to confirm that a
+process *is* the account. It needs a handle to the process. Windows grants
+PROCESS_QUERY_LIMITED_INFORMATION and TOKEN_QUERY to an unelevated process for a
+process it holds a handle to, and foundation/token_observation.py uses exactly
+that. Verified here, non-elevated, against a real child process:
+
+    status VERIFIED | sid S-1-5-21-...-1001 | integrity MEDIUM | elevated False
+
+So the identity can be read from the token rather than believed from a printout,
+which is exactly the requirement the milestone specified. The identity came from
+the token; nothing the process said was merged with it.
+
+Cross-credential OpenProcess remains NOT_TESTABLE. Windows' default process DACL
+grants Everyone SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, which suggests
+it will work, but testing it requires launching as the subject, which requires a
+credential this investigation will not ask for. observe_process returns
+NOT_TESTABLE rather than assuming, and a caller receiving it must not treat the
+identity as confirmed.
+
+### The mechanism is not new
+
+M005 already recorded a human-executed cross-process probe as BABY_AI_TEST with
+OS_DENIED on protected paths and ALLOWED on the workspace, and C:\Users\BABY_AI_TEST
+exists with a LastLogon of 2026-09-27. The recommended mechanism has worked once.
+The recommendation is therefore not a proposal; it is the mechanism M005 used,
+now paired with independent token observation so the operator can confirm it.
+
+The account is in NO local group at all, not even Users. It inherits nothing. The
+M005 deny ACEs are the only thing constraining it, which is precisely why they
+must not be touched, and why the test suite now asserts all 14 protected
+directories still carry their deny ACE by name.
+
+### Refused, and why
+
+Impersonation and CreateProcessWithLogonW are refused because the privileges are
+absent *and* acquiring them would be worse than the problem: whoever holds them
+can mint a token for any local account without that account's password. S4U is
+refused for the same reason despite being password-free, since it needs
+SeImpersonatePrivilege to call and SeTcbPrivilege to register. Task Scheduler and
+services are rejected as standing execution paths needing a stored credential --
+more capability than one controlled interaction requires. WSL is ruled out because
+M005 measured it as the operator's own identity over 9p/DrvFs.
+
+### Two things the host would not tell us
+
+secedit /export needs elevation, so the subject account's granted logon rights are
+NOT_TESTABLE. The Security event log is unreadable non-elevated, so there is no
+audit-log corroboration. Both are honest gaps, recorded as gaps rather than as
+absence.
+
+### Two defects I introduced and the existing tests caught
+
+host_readiness.py called subprocess.run without explicit shell=False or closed
+stdin. tests/test_m010_boundary.py failed on it -- a standing rule the project had
+already written, and the only reason it exists. Fixed by complying, not by
+weakening the test.
+
+PowerShell edits had silently written a UTF-8 BOM into seven files, including
+token_observation.py, which made ast.parse fail on a leading \ufeff. Stripped, and
+a repo-wide no-BOM test added so it cannot recur. Note the BOMs were present in
+the M013 and M014 commits; this removes them.
+
+### Also worth recording: my own test bugs
+
+Three tests asserted the wrong thing and were fixed rather than worked around: one
+parsed icacls output for (D) when it prints (DENY) and so found zero deny ACEs; one
+asserted NOT_TESTABLE where FAILED is correct, because the token WAS readable and
+said the process was the wrong account; and one text-scanned for PROCESS_ALL_ACCESS
+and matched the comment saying the module deliberately avoids it -- the same false
+positive M011's AST tests were written to prevent.
+
+### Result
+
+NOT_TESTABLE, honestly. Host readiness NOT_TESTABLE. Real process identity
+NOT_TESTABLE. 48 investigation tests. portable suite 1733 passed / 749 subtests.
+Host security 15 failed / 10 passed / 13 subtests, all NOT_TESTABLE.
+
+No birth occurred, no subject exists, and M014 is unchanged. M015 not started.

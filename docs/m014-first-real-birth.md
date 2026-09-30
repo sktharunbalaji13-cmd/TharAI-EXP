@@ -1,4 +1,4 @@
-﻿# M014 â€” Human-selected foundation deployment and the first real birth
+# M014 â€” Human-selected foundation deployment and the first real birth
 
 ## What this milestone is
 
