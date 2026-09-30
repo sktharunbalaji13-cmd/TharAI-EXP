@@ -1977,3 +1977,121 @@ model directory. M014 still BLOCKED at stage declaration.
 Not decided here and not a laboratory action: the interpreter, and eventually the
 runtime and model, need to live somewhere BABY_AI_TEST can reach. The deny ACEs
 stay exactly as they are; only the executable's location would change.
+
+---
+
+## 2026-09-30 - Host-readiness: subject-runtime staging design
+
+An investigation and a design. No directory created, no artifact copied, no ACL
+changed, no model selected, no birth. M014 birth behaviour untouched.
+
+### The load-bearing finding
+
+The repo root -- C:\dev and C:\dev\TharAI-EXP -- grants
+
+    NT AUTHORITY\Authenticated Users:(I)(M)      = Modify, includes Write+Delete
+    BUILTIN\Users:(I)(RX)
+
+BABY_AI_TEST is enabled and has logged on interactively, so it necessarily holds
+Authenticated Users and therefore Modify over the repository root and every
+subdirectory that does not override it. Confirmed by inspection: scripts,
+baby_workspace, tests, environment and subject all inherit (I)(M), and none
+carries any BABY_AI_TEST ACE.
+
+Consequence: a subject_runtime directory created under the repo root with default
+inheritance would hand the subject Modify over the staged runtime and model. The
+design must break inheritance explicitly. This is the single most important
+requirement in the document and it is not optional.
+
+It also means the existing M005 boundary is a deny-list model: protected
+directories are safe because of explicit DENY ACEs, not because the default is
+deny. That works, is unchanged here, but the staging area cannot rely on any
+inherited protection and must state its own.
+
+### Runtime dependency analysis, from real PE import tables
+
+Reported, not selected. llama-server.exe (x64) imports 20 DLLs; four are local:
+
+    llama.dll, ggml.dll, ggml-base.dll, mtmd.dll
+
+plus 16 Windows DLLs. The transitive local closure is the same five files. The
+VC++ runtime (MSVCP140, VCRUNTIME140, MSVCP140_CODECVT_IDS) is already present in
+System32, so it needs no staging. The directory also holds 14 ggml-cpu-*.dll
+variants and ggml-vulkan.dll (53.4 MB); there are no CUDA DLLs, so this build is
+CPU plus Vulkan.
+
+The interesting part: nothing in that directory references any ggml-cpu-*.dll by
+name except each file referencing itself, and ggml.dll imports no LoadLibrary at
+all. Whether the CPU backend is loaded dynamically by a mechanism invisible to
+static analysis, or is statically linked, cannot be determined without executing
+the binary. The minimum staging set is DERIVED, not OBSERVED.
+
+Proposed stage is the whole directory, 89.0 MB / 23 files, not the 12.2 MB
+five-file closure. Under-staging a dynamically loaded backend fails only at first
+execution under a different account with no error pointing at the cause; over-
+staging costs disk and some read access to unused DLLs. Empirical check 16 --
+observing which files the runtime actually opens -- will replace the guess with a
+measurement.
+
+### Python is not a subject capability
+
+llama-server.exe imports no Python DLL; the subject runtime is self-contained
+native. Python has only two roles, neither of them the subject's: laboratory
+verification code, which runs as the operator and needs no staging, and the M014
+boundary probe, which is a test artifact.
+
+So the probe should not be Python either. Staging a general-purpose CPython into
+the subject boundary would hand the subject a programming environment it has no
+use for and would make "the subject's runtime" mean something far broader than it
+should. A minimal native probe is proposed instead. This does not block the
+staging design; it blocks its verification, so LAUNCH_COMMAND_READY stays false.
+
+### Proposed ACL model: allow-list plus a deny backstop
+
+Layer 1 removes inheritance entirely, then grants only operator/SYSTEM/
+Administrators full control and BABY_AI_TEST RX on runtime\, R on model\ and
+config\. Layer 2 adds an explicit DENY for BABY_AI_TEST (WD,AD,W,D,DC) across the
+subtree.
+
+Layer 2 is not redundant. If inheritance is ever re-enabled by a mistake, a tool
+or a restore, Authenticated Users:(M) returns and the subject regains write and
+delete. A DENY is evaluated before ALLOW, so it survives that. Layer 1 is the
+design, layer 2 is the insurance. Two constraints that are easy to get wrong are
+called out: BABY_AI_TEST must never be the owner, since the owner can always
+rewrite the DACL; and DELETE must be denied on both the file and the parent, since
+Windows allows deleting via FILE_DELETE_CHILD on the parent directory.
+
+### Stated plainly rather than assumed
+
+The model is not secret from the subject -- it must read the weights to run them.
+What this boundary provides is integrity, not confidentiality, and the design says
+so explicitly so nobody later infers otherwise.
+
+More significantly: llama-server.exe contains --model-url, so it can fetch, and
+no ACL prevents that. An ACL governs the filesystem, not the network.
+LOCAL_ONLY_NO_FETCH must be enforced by the probe and the network policy. This is
+the most significant residual risk and staging does not solve it.
+
+Also worth recording: the subject already holds Modify over the source tree,
+except where M005 denies it. Staging neither widens nor narrows that. It is
+pre-existing and worth revisiting separately.
+
+### A bug the truncation tests found
+
+The PE reader tolerated a section whose raw bytes ran past the end of the file.
+A half-copied DLL then resolved no RVA to an offset, the import walk found
+nothing, and the reader reported "0 imports" for a file that plainly has 104.
+Silence there would let a truncated staged artifact pass as a dependency-free one
+-- the exact failure the staging design most needs to detect. Now reported as
+PEError, with cutoff sizes swept rather than guessed.
+
+Tests: 30 staging, 38 launch, 48 host-readiness. Portable suite 1801 passed /
+749 subtests. Host security 15 failed / 10 passed / 13 subtests, all NOT_TESTABLE.
+
+Nothing changed: no staging directory, no copied artifacts, no ACL change, no
+privilege, group, task or service. Events 20, chain intact; provenance 14; no
+BIRTH.json; no model directory. All 14 M005 deny ACEs intact. M014 still BLOCKED
+at stage declaration.
+
+The .agents/, .claude/, .claude-flow/, .swarm/, .mcp.json, CLAUDE.md and the
+.gitignore edit remain untracked and untouched, per instruction.

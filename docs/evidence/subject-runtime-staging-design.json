@@ -1,0 +1,111 @@
+{
+  "schema": "babylab/subject-runtime-staging-design/v1",
+  "milestone": "NONE (staging design investigation)",
+  "generated_at": "2026-09-30T12:01:00.526Z",
+  "host_readiness": "NOT_TESTABLE",
+  "real_process_identity": "NOT_TESTABLE",
+  "launch_ready": false,
+  "design_path": "docs/subject-runtime-staging-design.md",
+  "parent_acl_finding": {
+    "observed": "C:\\dev\\TharAI-EXP grants NT AUTHORITY\\Authenticated Users:(I)(M) = Modify, which includes Write and Delete; BABY_AI_TEST is enabled and has logged on, so it necessarily holds Authenticated Users",
+    "consequence": "a subject_runtime directory created with default inheritance would hand the subject Modify over the staged runtime and model",
+    "requirement": "inheritance must be broken explicitly (inheritance:r), with an explicit DENY backstop",
+    "inherited_by_existing_subdirs": [
+      "scripts",
+      "baby_workspace",
+      "tests",
+      "environment",
+      "subject"
+    ],
+    "babY_ai_test_explicit_ace_at_parent": false
+  },
+  "runtime_dependencies": {
+    "executable": "llama-server.exe",
+    "architecture": "x64",
+    "import_count": 20,
+    "local_closure": [
+      "llama.dll",
+      "ggml-base.dll",
+      "mtmd.dll",
+      "ggml.dll"
+    ],
+    "system_dlls": 16,
+    "vc_runtime_system_wide": true,
+    "cpu_variant_dlls_present": 14,
+    "vulkan_dll_present": true,
+    "cuda_dlls_present": false,
+    "dynamic_backend_load_observable": false,
+    "ggml_dll_imports_loadlibrary": false,
+    "minimum_set": "NOT_TESTABLE without execution",
+    "proposed_stage": "whole directory, 89.0 MB / 23 files",
+    "sizes": {
+      "whole": 89.0,
+      "closure_only": 12.2,
+      "closure_plus_cpu": 27.6,
+      "plus_vulkan": 80.9
+    },
+    "note": "reporting only; no runtime has been selected"
+  },
+  "python_requirement": {
+    "subject_runtime_needs_python": false,
+    "llama_server_imports_python": false,
+    "python_roles": [
+      "laboratory verification code (operator only)",
+      "M014 boundary probe (test artifact)"
+    ],
+    "proposal": "the probe should NOT be Python; a minimal native probe is proposed instead",
+    "why": "staging a general-purpose CPython into the subject boundary would give the subject a programming environment it has no use for"
+  },
+  "model_staging": {
+    "path": "subject_runtime/model",
+    "subject_rights": "R",
+    "subject_write": "DENIED",
+    "subject_delete": "DENIED",
+    "confidentiality": "NOT provided -- the subject must read the weights; integrity is what the boundary provides",
+    "selected": false,
+    "exists": false,
+    "expected_size_gb": "4.5-5.5 for a 4-bit 8B"
+  },
+  "residual_risk": {
+    "network_fetch": "llama-server.exe contains --model-url; no ACL prevents network access; LOCAL_ONLY_NO_FETCH must be enforced by the probe and network policy, NOT_TESTABLE via any staging design",
+    "acl_text_inspection": "an operator-side ACL read is not boundary-meaningful; checks must run as the subject"
+  },
+  "nothing_changed": {
+    "staging_directory_created": false,
+    "artifacts_copied": false,
+    "acls_changed": 0,
+    "privileges_granted": [],
+    "groups_changed": 0,
+    "tasks_created": 0,
+    "services_created": 0,
+    "events": 20,
+    "event_chain_intact": true,
+    "provenance_entries": 14,
+    "birth_record_present": false,
+    "model_dir_present": false
+  },
+  "m014_unchanged": {
+    "status": "BLOCKED",
+    "stage": "declaration",
+    "subject_id": "NONE",
+    "t_birth": "UNAVAILABLE",
+    "first_experience": "NOT_PERFORMED"
+  },
+  "unrelated_untracked": [
+    ".agents/",
+    ".claude/",
+    ".claude-flow/",
+    ".swarm/",
+    ".mcp.json",
+    "CLAUDE.md",
+    "a .gitignore edit adding ruflo local-secret rules"
+  ],
+  "tests": {
+    "staging": "30 passed",
+    "subject_launch": "38 passed",
+    "host_readiness": "48 passed",
+    "portable_suite": "1801 passed, 749 subtests passed",
+    "host_security": "15 failed, 10 passed, 13 subtests -- NOT_TESTABLE"
+  },
+  "m015": "NOT STARTED"
+}
