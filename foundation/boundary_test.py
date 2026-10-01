@@ -147,6 +147,11 @@ def parse_probe_output(output: str) -> dict[str, Any]:
         line = raw.strip()
         if not line:
             continue
+        # The operation name is followed immediately by `result=`, then any
+        # remaining fields land in `detail`. The v2 probe emits
+        # `capability=... target=...` AFTER `result=` for exactly this reason: a
+        # line that put them first would not match, and would be recorded as
+        # `unparsed` -- which is how evidence goes missing silently.
         match = _LINE.match(line)
         if match:
             findings.append(ProbeFinding(
@@ -183,6 +188,7 @@ def build_probe_argv(
     workspace: str | Path | None = None,
     *,
     traverse: str | Path | None = None,
+    traverse_leaf: str | Path | None = None,
     enumerate_runtime: str | Path | None = None,
     enumerate_model: str | Path | None = None,
     enumerate_config: str | Path | None = None,
@@ -205,6 +211,7 @@ def build_probe_argv(
     for name, value in (
         ("--staging-root", staging_root),
         ("--traverse", traverse),
+        ("--traverse-leaf", traverse_leaf),
         ("--enumerate-runtime", enumerate_runtime),
         ("--enumerate-model", enumerate_model),
         ("--enumerate-config", enumerate_config),
@@ -215,6 +222,27 @@ def build_probe_argv(
         if value is not None:
             argv.append(f"{name}={value}")
     return argv
+
+
+def walk_to(root: str | Path, leaf: str | Path) -> list[Path]:
+    """Every existing path component from ``root`` down to ``leaf``.
+
+    Used to report WHICH ancestor denies access, not merely that access failed.
+    The M015 investigation could name the failing capability but not the failing
+    directory; the first disposable experiment was invalidated precisely because
+    the denial sat at ``C:\\Users\\<operator>``, four levels above the tree under
+    test. Naming each component turns an unattributable denial into a located one.
+    """
+    root = Path(root)
+    leaf = Path(leaf)
+    parts: list[Path] = []
+    current = root
+    parts.append(current)
+    relative = leaf.relative_to(root)
+    for part in relative.parts:
+        current = current / part
+        parts.append(current)
+    return parts
 
 
 def runas_command(probe: str | Path, output: str | Path, argv: list[str]) -> str:

@@ -11,6 +11,22 @@
  *
  * Build:  csc /nologo /out:probe.exe probe.cs
  * (or Add-Type -OutputType ConsoleApplication on PowerShell 5.1)
+ *
+ * v2 measurement correction. Four Windows capabilities that this probe previously
+ * collapsed into two operations are now measured separately, because the collapse
+ * produced evidence that named a capability it had not tested:
+ *
+ *   FILE_TRAVERSE       `traverse_to_leaf`        CreateFileW(leaf, FILE_READ_ATTRIBUTES)
+ *   FILE_LIST_DIRECTORY `enumerate_*`             Enumerate(dir)
+ *   FILE_READ_ATTRIBUTES `read_metadata`          GetFileAttributesExW(path)
+ *   FILE_READ_DATA      `read_file_bytes`         FileStream.Read()
+ *
+ * The old `traverse_directory` operation called Directory.GetFileSystemEntries,
+ * which requests FILE_LIST_DIRECTORY on the directory itself and never descends
+ * into a child. It was a listing test wearing a traversal label. The old read
+ * operation called FileInfo.Length before File.OpenRead inside a single lambda,
+ * so a stat failure was reported as a read denial without any read being
+ * attempted. Both are fixed here; see Traverse, Enumerate, Metadata, ReadBytes.
  */
 
 using System;
@@ -43,6 +59,82 @@ internal static class Probe
 
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern IntPtr GetCurrentProcess();
+
+    // --- native access-check primitives ---------------------------------------
+    //
+    // The M015 investigation showed that Directory.GetFileSystemEntries cannot
+    // answer "can this account traverse into the directory": that call requests
+    // FILE_LIST_DIRECTORY on the directory itself, so it measures enumeration and
+    // nothing else. Naming that operation `traverse_directory` made the evidence
+    // claim a capability it never tested.
+    //
+    // Traversal is a property of PATH RESOLUTION, not of any single handle. The
+    // Windows way to test it is to open a target that lives BENEATH the directory
+    // and succeed. The kernel must walk the path component by component, and for
+    // each intermediate directory it checks FILE_TRAVERSE (0x20) before descending.
+    // CreateFileW on the leaf therefore fails with ERROR_ACCESS_DENIED when an
+    // ancestor lacks traverse, and succeeds when every ancestor has it.
+    //
+    // The leaf's own access is a different question, so it is requested explicitly
+    // and reported separately: FILE_READ_DATA (0x01) for content, and
+    // FILE_READ_ATTRIBUTES (0x80) alone for a metadata-only probe. A traversal test
+    // that requests read on the leaf cannot distinguish "cannot descend" from
+    // "descended but cannot read", so the two are reported as separate numbers.
+
+    const uint FILE_READ_DATA = 0x0001;
+    // FILE_LIST_DIRECTORY shares bit 0x01 with FILE_READ_DATA; the two names
+    // describe the same bit on different object types. Declared separately so the
+    // emitted evidence names the directory capability rather than reusing the
+    // file-side constant.
+    const uint FILE_LIST_DIRECTORY = 0x0001;
+    const uint FILE_TRAVERSE = 0x0020;
+    const uint FILE_READ_ATTRIBUTES = 0x0080;
+    const uint GENERIC_READ = 0x80000000;
+
+    const uint OPEN_EXISTING = 3;
+    const uint FILE_ATTRIBUTE_NORMAL = 0x00000080;
+    const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr CreateFileW(string name, uint access, uint share,
+        IntPtr security, uint creation, uint flags, IntPtr templateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern uint GetLastError();
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool GetFileAttributesExW(string name, int level, IntPtr data);
+
+    const int GetFileExInfoStandard = 0;
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct WIN32_FILE_ATTRIBUTE_DATA
+    {
+        public uint FileAttributes;
+        public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastAccessTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastWriteTime;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+    }
+
+    /// Open a path with an EXACT access mask and report the raw Win32 outcome.
+    /// No managed wrapper sits between the call and the error code, so the result
+    /// is the kernel's own verdict rather than a re-derived approximation.
+    static string TryNativeOpen(string path, uint access, out uint winError)
+    {
+        winError = 0;
+        IntPtr handle = CreateFileW(path, access,
+            0x00000001 | 0x00000002 | 0x00000004, // FILE_SHARE_READ|WRITE|DELETE
+            IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
+        if (handle == new IntPtr(-1)) // INVALID_HANDLE_VALUE, spelled out for this toolchain
+        {
+            winError = GetLastError();
+            return "OS_DENIED";
+        }
+        CloseHandle(handle);
+        return "OS_ALLOWED";
+    }
 
     enum TokenInformationClass
     {
@@ -514,6 +606,9 @@ internal static class Probe
         return Run(label, action);
     }
 
+    /// Directory enumeration. This measures FILE_LIST_DIRECTORY and is named for
+    /// exactly that. It is NOT a traversal test: GetFileSystemEntries requests
+    /// FILE_LIST_DIRECTORY on `dir` itself and never descends into a child path.
     static void Enumerate(string label, string dir)
     {
         string reach = Reach(dir);
@@ -521,27 +616,178 @@ internal static class Probe
         {
             Console.WriteLine("probe=" + label + " result=" +
                 (reach == "NOT_TESTABLE" ? "NOT_TESTABLE" : "PATH_ERROR") +
-                " reason=" + (reach == "NOT_TESTABLE" ? "no_path_supplied" : "path_not_reached"));
+                " capability=FILE_LIST_DIRECTORY reason=" +
+                (reach == "NOT_TESTABLE" ? "no_path_supplied" : "path_not_reached"));
             return;
         }
         try
         {
             string[] entries = Directory.GetFileSystemEntries(dir);
-            Console.WriteLine("probe=" + label + " result=OS_ALLOWED entries=" + entries.Length);
+            Console.WriteLine("probe=" + label + " result=OS_ALLOWED capability=FILE_LIST_DIRECTORY entries=" +
+                entries.Length);
         }
         catch (UnauthorizedAccessException)
         {
-            Console.WriteLine("probe=" + label + " result=OS_DENIED winerror=5");
+            Console.WriteLine("probe=" + label + " result=OS_DENIED capability=FILE_LIST_DIRECTORY winerror=5");
         }
         catch (Exception ex)
         {
-            Console.WriteLine("probe=" + label + " result=ERROR " + ex.GetType().Name);
+            Console.WriteLine("probe=" + label + " result=ERROR capability=FILE_LIST_DIRECTORY " + ex.GetType().Name);
+        }
+    }
+
+    /// Path traversal. Distinct from Enumerate by construction.
+    ///
+    /// The directory under test is NOT opened. Instead a target BENEATH it is
+    /// opened, because traversal is enforced by the kernel while it walks the path
+    /// toward that target. Three measurements are reported because a single one
+    /// cannot attribute a denial:
+    ///
+    ///   traverse_to_leaf  CreateFileW(leaf, FILE_READ_ATTRIBUTES)
+    ///       Minimal access. Succeeds only if every ancestor is traversable, so this
+    ///       is the traversal verdict with the target's own rights made trivial.
+    ///   traverse_leaf_read  CreateFileW(leaf, FILE_READ_DATA)
+    ///       The same walk plus real content rights on the leaf. A denial here when
+    ///       traverse_to_leaf succeeded localises the failure to the LEAF, not a parent.
+    ///   traverse_ancestor_list  CreateFileW(dir, FILE_LIST_DIRECTORY)
+    ///       Whether the directory itself can be enumerated, which is a different
+    ///       right and must not be inferred from either of the above.
+    ///
+    /// Nothing here calls Directory.GetFileSystemEntries, so a method named
+    /// traverse can no longer be reporting an enumeration result.
+    static void Traverse(string label, string dir, string leaf)
+    {
+        string reach = Reach(dir);
+        if (reach != "REACHABLE")
+        {
+            Console.WriteLine("probe=" + label + " result=" +
+                (reach == "NOT_TESTABLE" ? "NOT_TESTABLE" : "PATH_ERROR") +
+                " capability=FILE_TRAVERSE reason=" +
+                (reach == "NOT_TESTABLE" ? "no_path_supplied" : "path_not_reached"));
+            return;
+        }
+
+        if (string.IsNullOrEmpty(leaf))
+        {
+            // A traversal test with no leaf would degrade back into a directory
+            // open, which is precisely the conflation being removed. Reported as
+            // untestable instead of silently substituting a different operation.
+            Console.WriteLine("probe=" + label +
+                " result=NOT_TESTABLE capability=FILE_TRAVERSE reason=no_traversal_target_supplied");
+            return;
+        }
+
+        // Field order matters: `result=` comes immediately after the operation so
+        // the harness parser matches the line, and the describing fields follow in
+        // `detail`. Emitting them first would push every line into `unparsed` and
+        // the evidence would silently vanish from the report.
+        uint err;
+        string toLeaf = TryNativeOpen(leaf, FILE_READ_ATTRIBUTES, out err);
+        Console.WriteLine("probe=" + label + "_to_leaf result=" + toLeaf + WinErr(err) +
+            " capability=FILE_TRAVERSE access=FILE_READ_ATTRIBUTES target=" + leaf);
+
+        uint errRead;
+        string leafRead = TryNativeOpen(leaf, FILE_READ_DATA, out errRead);
+        Console.WriteLine("probe=" + label + "_leaf_read result=" + leafRead + WinErr(errRead) +
+            " capability=FILE_TRAVERSE access=FILE_READ_DATA target=" + leaf);
+
+        uint errList;
+        string ancList = TryNativeOpen(dir, FILE_LIST_DIRECTORY, out errList);
+        Console.WriteLine("probe=" + label + "_ancestor_list result=" + ancList + WinErr(errList) +
+            " capability=FILE_LIST_DIRECTORY target=" + dir);
+    }
+
+    static string WinErr(uint err)
+    {
+        return err == 0 ? "" : " winerror=" + err;
+    }
+
+    /// Actual content read. Opens the file for reading, calls Read(), and reports
+    /// the number of bytes the Read call actually returned. The count is never
+    /// taken from a length or stat call, so `bytes_observed` cannot describe a file
+    /// whose content was never fetched.
+    static void ReadBytes(string label, string path, Action onAllowed)
+    {
+        FileStream stream = null;
+        try
+        {
+            stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            byte[] buffer = new byte[64];
+            int observed = stream.Read(buffer, 0, buffer.Length);
+            Console.WriteLine("probe=" + label + " result=OS_ALLOWED capability=FILE_READ_DATA" +
+                " bytes_observed=" + observed);
+            if (onAllowed != null)
+            {
+                onAllowed();
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Console.WriteLine("probe=" + label + " result=OS_DENIED capability=FILE_READ_DATA winerror=5");
+        }
+        catch (FileNotFoundException)
+        {
+            Console.WriteLine("probe=" + label + " result=PATH_ERROR capability=FILE_READ_DATA reason=file_not_found");
+        }
+        catch (DirectoryNotFoundException)
+        {
+            Console.WriteLine("probe=" + label + " result=PATH_ERROR capability=FILE_READ_DATA reason=directory_not_found");
+        }
+        catch (IOException ex)
+        {
+            // An IOException carries a real Win32 code. Reported distinctly so a
+            // sharing violation is never read as an access denial.
+            int code = ex.HResult & 0xFFFF;
+            Console.WriteLine("probe=" + label + " result=IO_ERROR capability=FILE_READ_DATA winerror=" + code);
+        }
+        finally
+        {
+            if (stream != null)
+            {
+                stream.Dispose();
+            }
+        }
+    }
+
+    /// Metadata access, reported on its own so it can never be mistaken for a read.
+    /// GetFileAttributesExW requests no content access at all, so a denial here is a
+    /// metadata denial and is labelled as one.
+    static void Metadata(string label, string path)
+    {
+        string reach = Reach(path);
+        if (reach != "REACHABLE")
+        {
+            Console.WriteLine("probe=" + label + " result=" +
+                (reach == "NOT_TESTABLE" ? "NOT_TESTABLE" : "PATH_ERROR") +
+                " capability=FILE_READ_ATTRIBUTES reason=" +
+                (reach == "NOT_TESTABLE" ? "no_path_supplied" : "path_not_reached"));
+            return;
+        }
+        IntPtr buffer = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(WIN32_FILE_ATTRIBUTE_DATA)));
+        try
+        {
+            if (!GetFileAttributesExW(path, GetFileExInfoStandard, buffer))
+            {
+                uint err = GetLastError();
+                Console.WriteLine("probe=" + label + " result=OS_DENIED capability=FILE_READ_ATTRIBUTES" +
+                    WinErr(err));
+                return;
+            }
+            var data = (WIN32_FILE_ATTRIBUTE_DATA)Marshal.PtrToStructure(
+                buffer, typeof(WIN32_FILE_ATTRIBUTE_DATA));
+            long size = ((long)data.FileSizeHigh << 32) | data.FileSizeLow;
+            Console.WriteLine("probe=" + label + " result=OS_ALLOWED capability=FILE_READ_ATTRIBUTES" +
+                " metadata_bytes_reported=" + size);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
         }
     }
 
     static int Main(string[] args)
     {
-        Console.WriteLine("schema=probe/v1");
+        Console.WriteLine("schema=probe/v2");
         Console.WriteLine("pid=" + System.Diagnostics.Process.GetCurrentProcess().Id);
         Console.WriteLine("executable=" + System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName);
         Console.WriteLine("command_line=" + string.Join(" ", args));
@@ -567,8 +813,9 @@ internal static class Probe
         // Named options follow, added for the M015 boundary test. Each carries an
         // explicit directory to traverse and enumerate, so the read-only halves of
         // the boundary (which a scratch argument alone cannot express) are testable:
-        //   --traverse=<dir> --enumerate-runtime=<dir> --enumerate-model=<dir>
-        //   --enumerate-config=<dir> --read-file=<path> --acl-target=<path>
+        //   --traverse=<dir> --traverse-leaf=<path> --enumerate-runtime=<dir>
+        //   --enumerate-model=<dir> --enumerate-config=<dir>
+        //   --read-file=<path> --acl-target=<path>
         // Windows PowerShell DROPS an empty-string argument: passing `"" "d"` delivers
         // only two arguments, which silently shifts every later positional value.
         // A named placeholder keeps the positions aligned, and "-" is normalised to
@@ -595,6 +842,10 @@ internal static class Probe
         Console.WriteLine("staging_root=" + (stagedTree.Length > 0 ? stagedTree : "<none>"));
 
         string traverseDir = Option(args, "--traverse=");
+        // The leaf the traversal test walks to. Traversal is a property of
+        // descending to a target, so the leaf is a required input to that
+        // measurement rather than an optional extra.
+        string traverseLeaf = Option(args, "--traverse-leaf=");
         string enumRuntime = Option(args, "--enumerate-runtime=");
         string enumModel = Option(args, "--enumerate-model=");
         string enumConfig = Option(args, "--enumerate-config=");
@@ -606,9 +857,13 @@ internal static class Probe
         Action bump = delegate { allowed++; };
 
         // --- read-only halves of the boundary, first -----------------------
-        RunGuarded("traverse_directory", traverseDir, () => {
-                Directory.GetFileSystemEntries(traverseDir); bump();
-            });
+        //
+        // Traversal, enumeration, metadata, and content read are four DIFFERENT
+        // Windows capabilities and are now four differently named operations. They
+        // were previously two operations with three capabilities collapsed into
+        // them, which is how a `traverse_directory` result came to be a listing
+        // result and a "read denied" came to be a stat denial.
+        Traverse("traverse", traverseDir, traverseLeaf);
         // No implicit fallback. Deriving `..\runtime` from the scratch argument looked
         // convenient but meant a run with a bogus scratch path still "tested" the
         // real staging directory -- so a broken harness could report OS_ALLOWED
@@ -628,16 +883,28 @@ internal static class Probe
         Console.WriteLine("read_file_target=" + (readFile.Length > 0 ? readFile : "<none>"));
         Console.WriteLine("read_file_in_staging=" +
                 (IsUnder(readFile, stagedTree) || IsUnder(readFile, staged)));
-        RunGuarded("read_disposable_file", readFile, () => {
-                long bytes = new FileInfo(readFile).Length;
-                using (var stream = File.OpenRead(readFile))
-                {
-                    byte[] buffer = new byte[1];
-                    stream.Read(buffer, 0, 1);
-                }
-                Console.WriteLine("read_file_bytes_observed=" + bytes);
-                bump();
-            });
+
+        // The read comes FIRST and is attempted on its own. The previous code
+        // called FileInfo.Length inside the read lambda, so a stat failure aborted
+        // the read and was reported as `read_disposable_file result=OS_DENIED` --
+        // a read denial that had never attempted a read. Reading first means the
+        // content result exists regardless of what metadata later reports.
+        string readReach = Reach(readFile);
+        if (readReach != "REACHABLE")
+        {
+            Console.WriteLine("probe=read_file_bytes result=" +
+                (readReach == "NOT_TESTABLE" ? "NOT_TESTABLE" : "PATH_ERROR") +
+                " capability=FILE_READ_DATA reason=" +
+                (readReach == "NOT_TESTABLE" ? "no_path_supplied" : "path_not_reached"));
+        }
+        else
+        {
+            ReadBytes("read_file_bytes", readFile, delegate { bump(); });
+        }
+
+        // Metadata is measured after, and separately, so its outcome can never
+        // stand in for the read above.
+        Metadata("read_metadata", readFile);
         // The ACL-modification test. The ReadOnly attribute it sets MUST be restored
         // before this function returns: the attribute is not part of the ACL, so
         // icacls keeps reporting a clean boundary while every write to the file

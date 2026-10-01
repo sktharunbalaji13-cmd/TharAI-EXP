@@ -292,7 +292,13 @@ def test_probe_builds_and_correctly_identifies_the_operator():
     run = subprocess.run([str(exe)], capture_output=True, text=True,
                          shell=False, timeout=120)
     output = run.stdout
-    assert "schema=probe/v1" in output
+    # v2 is the measurement-corrected probe: traversal, listing, metadata, and
+    # content read are four separately reported capabilities. The literal is kept
+    # rather than derived from the source so a silent schema regression fails here.
+    assert "schema=probe/v2" in output, (
+        "expected the measurement-corrected probe schema, got: "
+        f"{output.splitlines()[0] if output else '<no output>'}"
+    )
     assert "user_sid=S-1-5-21-" in output
     assert "account_name=" in output
     assert "integrity_level=" in output
