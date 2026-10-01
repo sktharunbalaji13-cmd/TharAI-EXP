@@ -22,6 +22,7 @@ whether it appears to.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -55,7 +56,14 @@ def _build_probe(exe: Path) -> Path:
     cs = exe.with_suffix(".cs")
     cs.write_text(PROBE_SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
     if exe.exists():
-        exe.unlink()
+        try:
+            exe.unlink()
+        except PermissionError:
+            # A previous run's binary may still be executing. Fall back to a
+            # fresh name rather than silently reusing a stale build.
+            exe = exe.with_name(exe.stem + "_" + str(os.getpid()) + exe.suffix)
+            cs = exe.with_suffix(".cs")
+            cs.write_text(PROBE_SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
     script = (
         "$ErrorActionPreference='Stop'; "
         f"Add-Type -Path '{cs}' "
@@ -106,8 +114,35 @@ def _method_body(source: str, name: str) -> str:
         elif source[index] == "}":
             depth -= 1
             if depth == 0:
-                return source[start:index + 1]
+                body = source[start:index + 1]
+                return _strip_comments(body)
     pytest.fail(f"unbalanced braces while reading {name}")
+
+
+def _strip_comments(body: str) -> str:
+    """Remove // comments so prose about a call is not read as a call.
+
+    The corrected Traverse explains at length why it must not call Reach(). Those
+    sentences contain the token, so a naive scan would fail the very test that
+    documents the fix. Only // line comments are stripped: a /* */ block or a
+    string literal could hide or fake a call, and neither appears in these
+    methods.
+    """
+    lines = []
+    for line in body.splitlines():
+        # Keep string literals intact: a "//" inside a quoted path is not a comment.
+        in_string = False
+        cut = len(line)
+        index = 0
+        while index < len(line) - 1:
+            if line[index] == '"' and line[index - 1:index] != "\\":
+                in_string = not in_string
+            elif not in_string and line[index:index + 2] == "//":
+                cut = index
+                break
+            index += 1
+        lines.append(line[:cut])
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +267,142 @@ def test_metadata_is_reported_as_its_own_capability():
     assert "GetFileSystemEntries" not in body
 
 
+# ---------------------------------------------------------------------------
+# Defect 3: a Reach() preflight can suppress the capability it precedes
+# ---------------------------------------------------------------------------
+
+def test_traverse_does_not_preflight_with_reach():
+    """The traversal measurement must not gate on Exists() before attempting.
+
+    Reach() answers "does this path exist?", and under a restricted account a
+    path that exists but cannot be traversed answers NO. A preflight built on it
+    therefore returns early and publishes NOT_TESTABLE for a capability that was
+    never attempted -- which is exactly what the first two subject runs of the
+    corrected experiment reported.
+    """
+    source = PROBE_SOURCE.read_text(encoding="utf-8")
+    body = _method_body(source, "Traverse")
+    assert "Reach(" not in body, (
+        "Traverse must not call Reach() before the native open; Exists() cannot "
+        "distinguish an inaccessible path from an absent one, so the preflight "
+        "suppresses the FILE_TRAVERSE measurement it is meant to guard"
+    )
+    assert "Directory.Exists" not in body
+    assert "File.Exists" not in body
+
+
+def test_traverse_attempts_the_native_open_before_any_early_return():
+    """The native open must be reachable even when the directory is unreadable.
+
+    A structural check: the CreateFileW-backed helper must be invoked before any
+    conditional return that depends on a reachability answer. This is what makes
+    the preflight regression above impossible to reintroduce silently.
+    """
+    source = PROBE_SOURCE.read_text(encoding="utf-8")
+    body = _method_body(source, "Traverse")
+    open_call = body.find("TryNativeOpen(leaf, FILE_READ_ATTRIBUTES")
+    assert open_call != -1, "Traverse must attempt the minimal-access leaf open"
+
+    # Only a return guarded by the absent-leaf check is permitted ahead of the
+    # open. The guard is located structurally -- the `if` immediately enclosing
+    # the return -- rather than by scanning backwards for a token, which would
+    # match text anywhere in the enclosing block and pass on a comment.
+    # Locate each `return` before the open, then find the nearest preceding `if`
+    # whose body contains it. A multi-line Console.WriteLine makes the
+    # immediately-preceding line a poor boundary, so the guard is taken to be the
+    # last `if` opened before the return.
+    for match in re.finditer(r"\breturn\b", body):
+        if match.start() >= open_call:
+            break
+        guards = list(re.finditer(r"\bif\s*\(", body[:match.start()]))
+        assert guards, "an early return before the native open has no guard at all"
+        # The condition text is read to the parenthesis that closes it, not to the
+        # next `)`, so a nested call inside the condition is not truncated.
+        guard = guards[-1]
+        depth = 0
+        end = guard.end()
+        for index in range(guard.end() - 1, len(body)):
+            if body[index] == "(":
+                depth += 1
+            elif body[index] == ")":
+                depth -= 1
+                if depth == 0:
+                    end = index + 1
+                    break
+        guard_text = body[guard.start():end]
+        assert "IsNullOrEmpty(leaf)" in guard_text, (
+            "the only early return allowed before the native open is guarded by "
+            "IsNullOrEmpty(leaf); any other condition can suppress the "
+            f"FILE_TRAVERSE measurement. Guard was: {guard_text!r}"
+        )
+
+
+def test_native_open_classifies_denial_apart_from_absence():
+    """A missing target must not be reported as an access denial.
+
+    TryNativeOpen previously returned OS_DENIED for every failure, so a typo in a
+    path would have looked like a security control that worked. The error codes
+    are classified instead, and that classification is what lets the traversal
+    test drop its preflight without losing the denial/absence distinction.
+    """
+    source = PROBE_SOURCE.read_text(encoding="utf-8")
+    body = _method_body(source, "TryNativeOpen")
+    assert "ERROR_ACCESS_DENIED" in body, (
+        "only ERROR_ACCESS_DENIED may be reported as OS_DENIED"
+    )
+    for absent in ("ERROR_FILE_NOT_FOUND", "ERROR_PATH_NOT_FOUND"):
+        assert absent in body, f"{absent} must be distinguished from a denial"
+    deny_returns = [
+        line for line in body.splitlines()
+        if "return" in line and '"OS_DENIED"' in line
+    ]
+    assert len(deny_returns) == 1, (
+        "OS_DENIED must be returned from exactly one branch, the "
+        "ERROR_ACCESS_DENIED one; a blanket OS_DENIED would mask absent paths"
+    )
+
+
+def test_traverse_reports_not_testable_when_no_target_supplied():
+    """An absent traversal target is genuinely untested, and says so."""
+    source = PROBE_SOURCE.read_text(encoding="utf-8")
+    body = _method_body(source, "Traverse")
+    assert "no_traversal_target_supplied" in body, (
+        "a missing traversal target must report no_traversal_target_supplied "
+        "rather than being silently degraded into a different operation"
+    )
+
+
+def test_other_capabilities_keep_their_own_measurement_calls():
+    """The traversal fix must not collapse the other three capabilities.
+
+    This guards against a 'fix' that makes traversal work by routing the read or
+    the listing through the same call. Each capability must still reach its own
+    Windows operation.
+    """
+    source = PROBE_SOURCE.read_text(encoding="utf-8")
+    assert "GetFileSystemEntries" in _method_body(source, "Enumerate"), (
+        "FILE_LIST_DIRECTORY must still be measured by enumerating the directory"
+    )
+    assert ".Read(" in _method_body(source, "ReadBytes"), (
+        "FILE_READ_DATA must still be measured by an actual read"
+    )
+    assert "GetFileAttributesExW" in _method_body(source, "Metadata"), (
+        "FILE_READ_ATTRIBUTES must still be measured by its own call"
+    )
+
+
+def test_schema_remains_v2_after_the_preflight_correction():
+    """The preflight fix is a measurement correction, not a new contract.
+
+    Bumping the schema here would invalidate every archived v2 run, including
+    the two that established the preflight defect. The operation names and
+    capability labels are unchanged, so the schema must not move.
+    """
+    source = PROBE_SOURCE.read_text(encoding="utf-8")
+    assert "schema=probe/v2" in source
+    assert "schema=probe/v3" not in source
+
+
 def test_result_vocabulary_distinguishes_denied_from_bad_path():
     """OS_DENIED, PATH_ERROR, and NOT_TESTABLE must not collapse together.
 
@@ -275,7 +446,31 @@ def test_missing_target_reports_not_testable_rather_than_denied(tmp_path):
                          shell=False, timeout=120)
     findings = _findings_by_operation(parse_probe_output(run.stdout))
 
-    for label in ("traverse", "read_file_bytes", "read_metadata"):
+    # With a leaf supplied, the traversal measurement attempts the open and the
+    # kernel's answer arrives as PATH_ERROR -- never NOT_TESTABLE, which would
+    # mean the probe declined to try, and never OS_DENIED, which would mean a
+    # denial was invented for a path that is simply absent.
+    traverse = findings.get("traverse_to_leaf")
+    assert traverse is not None, (
+        "a supplied traversal target must be attempted; the preflight removed in "
+        "this correction used to return before any open was made"
+    )
+    assert traverse["outcome"] == "PATH_ERROR", (
+        f"an absent traversal target reported {traverse['outcome']!r}; expected "
+        f"PATH_ERROR because the native open was attempted and the OS reported "
+        f"the file as not found"
+    )
+    # The kernel reports ERROR_PATH_NOT_FOUND (3) when a parent directory is
+    # missing, and ERROR_FILE_NOT_FOUND (2) when only the leaf is. Both are
+    # absence, so both are accepted -- what matters is that a not-found code came
+    # back at all, which is what proves the open was attempted.
+    detail = str(traverse.get("detail", ""))
+    assert "winerror=2" in detail or "winerror=3" in detail, (
+        "the absent-target case must carry a not-found Win32 code so a reader can "
+        f"see the open really happened and the OS really answered; got {detail!r}"
+    )
+
+    for label in ("read_file_bytes", "read_metadata"):
         finding = findings.get(label)
         assert finding is not None, f"{label} produced no finding at all"
         assert finding["outcome"] in {"NOT_TESTABLE", "PATH_ERROR"}, (

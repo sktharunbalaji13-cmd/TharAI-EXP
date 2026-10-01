@@ -91,6 +91,12 @@ internal static class Probe
     const uint FILE_READ_ATTRIBUTES = 0x0080;
     const uint GENERIC_READ = 0x80000000;
 
+    const uint ERROR_FILE_NOT_FOUND = 2;
+    const uint ERROR_PATH_NOT_FOUND = 3;
+    const uint ERROR_ACCESS_DENIED = 5;
+    const uint ERROR_SHARING_VIOLATION = 32;
+    const uint ERROR_INVALID_NAME = 123;
+
     const uint OPEN_EXISTING = 3;
     const uint FILE_ATTRIBUTE_NORMAL = 0x00000080;
     const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
@@ -121,6 +127,11 @@ internal static class Probe
     /// Open a path with an EXACT access mask and report the raw Win32 outcome.
     /// No managed wrapper sits between the call and the error code, so the result
     /// is the kernel's own verdict rather than a re-derived approximation.
+    ///
+    /// The error code is classified rather than flattened: ERROR_ACCESS_DENIED is
+    /// a security verdict, while ERROR_FILE_NOT_FOUND and ERROR_PATH_NOT_FOUND
+    /// mean the target is not there. Returning OS_DENIED for all three would let
+    /// a typo in a path masquerade as a working security control.
     static string TryNativeOpen(string path, uint access, out uint winError)
     {
         winError = 0;
@@ -130,7 +141,12 @@ internal static class Probe
         if (handle == new IntPtr(-1)) // INVALID_HANDLE_VALUE, spelled out for this toolchain
         {
             winError = GetLastError();
-            return "OS_DENIED";
+            if (winError == ERROR_FILE_NOT_FOUND) return "PATH_ERROR";
+            if (winError == ERROR_PATH_NOT_FOUND) return "PATH_ERROR";
+            if (winError == ERROR_INVALID_NAME) return "PATH_ERROR";
+            if (winError == ERROR_SHARING_VIOLATION) return "IO_ERROR";
+            if (winError == ERROR_ACCESS_DENIED) return "OS_DENIED";
+            return "OS_ERROR";
         }
         CloseHandle(handle);
         return "OS_ALLOWED";
@@ -609,6 +625,14 @@ internal static class Probe
     /// Directory enumeration. This measures FILE_LIST_DIRECTORY and is named for
     /// exactly that. It is NOT a traversal test: GetFileSystemEntries requests
     /// FILE_LIST_DIRECTORY on `dir` itself and never descends into a child path.
+    ///
+    /// NOTE: the Reach() preflight below has the same defect that was just
+    /// corrected in Traverse -- Exists() cannot distinguish "inaccessible" from
+    /// "absent". It is left in place because this correction is scoped to the
+    /// traversal measurement, and the observed subject evidence shows this
+    /// operation does reach its call (enumerate_runtime reported OS_DENIED
+    /// winerror=5, not NOT_TESTABLE). Recorded here so the limitation is
+    /// explicit rather than rediscovered later.
     static void Enumerate(string label, string dir)
     {
         string reach = Reach(dir);
@@ -657,21 +681,27 @@ internal static class Probe
     /// traverse can no longer be reporting an enumeration result.
     static void Traverse(string label, string dir, string leaf)
     {
-        string reach = Reach(dir);
-        if (reach != "REACHABLE")
-        {
-            Console.WriteLine("probe=" + label + " result=" +
-                (reach == "NOT_TESTABLE" ? "NOT_TESTABLE" : "PATH_ERROR") +
-                " capability=FILE_TRAVERSE reason=" +
-                (reach == "NOT_TESTABLE" ? "no_path_supplied" : "path_not_reached"));
-            return;
-        }
-
+        // NO Reach() PREFLIGHT. This is the correction.
+        //
+        // Reach() asks Directory.Exists / File.Exists, and under a restricted
+        // account those return FALSE for a path that exists but cannot be
+        // traversed. So a preflight on the DIRECTORY could report NOT_TESTABLE or
+        // PATH_ERROR and return before the capability under test was ever
+        // attempted -- publishing an untested capability as if it had been
+        // measured. The first two subject runs of the corrected experiment did
+        // exactly that: `traverse result=NOT_TESTABLE reason=no_path_supplied`
+        // while the directory was present and its own ACL was readable.
+        //
+        // The leaf is the capability probe, and the kernel's own answer to the
+        // native open is the evidence. The error code distinguishes a denial
+        // (ERROR_ACCESS_DENIED) from an absent target, so no existence check is
+        // needed to tell those apart -- the open itself does.
         if (string.IsNullOrEmpty(leaf))
         {
-            // A traversal test with no leaf would degrade back into a directory
-            // open, which is precisely the conflation being removed. Reported as
-            // untestable instead of silently substituting a different operation.
+            // Still an honest NOT_TESTABLE: a traversal test with no target has
+            // nothing to traverse to. It is reported as untested rather than
+            // silently degraded into a directory open, which would reintroduce
+            // the exact conflation this method exists to remove.
             Console.WriteLine("probe=" + label +
                 " result=NOT_TESTABLE capability=FILE_TRAVERSE reason=no_traversal_target_supplied");
             return;
@@ -691,6 +721,17 @@ internal static class Probe
         Console.WriteLine("probe=" + label + "_leaf_read result=" + leafRead + WinErr(errRead) +
             " capability=FILE_TRAVERSE access=FILE_READ_DATA target=" + leaf);
 
+        // The ancestor listing is a DIFFERENT capability and is reported as one.
+        // It is attempted whenever a directory was supplied, with no Reach()
+        // preflight for the same reason. An absent directory here does not
+        // invalidate the traverse results above, so this runs last and cannot
+        // suppress them.
+        if (string.IsNullOrEmpty(dir))
+        {
+            Console.WriteLine("probe=" + label + "_ancestor_list result=NOT_TESTABLE" +
+                " capability=FILE_LIST_DIRECTORY reason=no_path_supplied");
+            return;
+        }
         uint errList;
         string ancList = TryNativeOpen(dir, FILE_LIST_DIRECTORY, out errList);
         Console.WriteLine("probe=" + label + "_ancestor_list result=" + ancList + WinErr(errList) +
@@ -708,6 +749,8 @@ internal static class Probe
     /// whose content was never fetched.
     static void ReadBytes(string label, string path, Action onAllowed)
     {
+        // NOTE: the caller's Reach() gate has the same Exists() defect corrected
+        // in Traverse. Left as-is because this correction is scoped to traversal.
         FileStream stream = null;
         try
         {
@@ -754,23 +797,26 @@ internal static class Probe
     /// metadata denial and is labelled as one.
     static void Metadata(string label, string path)
     {
-        string reach = Reach(path);
-        if (reach != "REACHABLE")
-        {
-            Console.WriteLine("probe=" + label + " result=" +
-                (reach == "NOT_TESTABLE" ? "NOT_TESTABLE" : "PATH_ERROR") +
-                " capability=FILE_READ_ATTRIBUTES reason=" +
-                (reach == "NOT_TESTABLE" ? "no_path_supplied" : "path_not_reached"));
-            return;
-        }
+        // NOTE: the caller's Reach() gate has the same Exists() defect corrected
+        // in Traverse. Left as-is because this correction is scoped to traversal.
         IntPtr buffer = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(WIN32_FILE_ATTRIBUTE_DATA)));
         try
         {
             if (!GetFileAttributesExW(path, GetFileExInfoStandard, buffer))
             {
+                // Classify by error code. Labelling every failure OS_DENIED made a
+                // nonexistent path report `OS_DENIED winerror=3`, which contradicts
+                // itself and would let a misconfigured target look like a security
+                // control that fired. Only ERROR_ACCESS_DENIED is a denial.
                 uint err = GetLastError();
-                Console.WriteLine("probe=" + label + " result=OS_DENIED capability=FILE_READ_ATTRIBUTES" +
-                    WinErr(err));
+                string verdict;
+                if (err == ERROR_ACCESS_DENIED) verdict = "OS_DENIED";
+                else if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND
+                         || err == ERROR_INVALID_NAME) verdict = "PATH_ERROR";
+                else if (err == ERROR_SHARING_VIOLATION) verdict = "IO_ERROR";
+                else verdict = "OS_ERROR";
+                Console.WriteLine("probe=" + label + " result=" + verdict +
+                    " capability=FILE_READ_ATTRIBUTES" + WinErr(err));
                 return;
             }
             var data = (WIN32_FILE_ATTRIBUTE_DATA)Marshal.PtrToStructure(
