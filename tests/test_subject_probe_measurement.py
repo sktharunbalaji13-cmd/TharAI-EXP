@@ -391,6 +391,178 @@ def test_other_capabilities_keep_their_own_measurement_calls():
     )
 
 
+# ---------------------------------------------------------------------------
+# Defect 4: a reporting helper must not end the run
+# ---------------------------------------------------------------------------
+
+def test_is_under_does_not_call_get_full_path_unguarded():
+    """IsUnder must normalise through the guarded helper, not Path directly.
+
+    The crash that took out the M015 subject run was System.NotSupportedException
+    from Path.GetFullPath inside IsUnder, on a `\\\\.\\` prefixed path. A bare call
+    propagates whatever GetFullPath throws, and because IsUnder runs immediately
+    before the read results are emitted, that cost every later measurement.
+    """
+    source = PROBE_SOURCE.read_text(encoding="utf-8")
+    body = _method_body(source, "IsUnder")
+    assert "Path.GetFullPath" not in body, (
+        "IsUnder must not call Path.GetFullPath directly; it throws on extended "
+        "and device path prefixes and would abort the run"
+    )
+    assert "TryNormalize" in body, "IsUnder must delegate to the guarded normaliser"
+
+
+def test_try_normalize_handles_the_prefixes_that_throw():
+    """The three prefix families that make GetFullPath throw must be handled."""
+    source = PROBE_SOURCE.read_text(encoding="utf-8")
+    body = _method_body(source, "TryNormalize")
+    # Written as escaped string literals: a raw string cannot end in a single
+    # backslash, which is exactly what these prefixes are.
+    for prefix in ("\\\\?\\", "\\\\.\\", "UNC"):
+        assert prefix in body, f"TryNormalize must handle the {prefix} prefix form"
+    for guarded in ("ArgumentException", "NotSupportedException",
+                    "PathTooLongException", "IOException"):
+        assert guarded in body, (
+            f"TryNormalize must catch {guarded}; Path.GetFullPath throws it for "
+            f"path forms a caller may legitimately pass"
+        )
+
+
+def test_try_normalize_never_returns_a_partial_path():
+    """On any failure it must return null, never a half-normalised string.
+
+    A caller cannot distinguish "outside the boundary" from "could not be
+    compared" unless failure is represented unambiguously.
+    """
+    source = PROBE_SOURCE.read_text(encoding="utf-8")
+    body = _method_body(source, "TryNormalize")
+    returns = re.findall(r"return\s+([^;]+);", body)
+    non_null = [r for r in returns
+                if r.strip() not in ("null",)
+                and "null" not in r
+                and not r.strip().startswith("//")]
+    assert non_null, "TryNormalize must have at least one success return"
+    assert all(("null" in r) or r.strip() == "full"
+               for r in returns), (
+        f"every failure path must return null; found: {non_null}"
+    )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
+def test_prefixed_staging_root_does_not_crash_and_compares_correctly(tmp_path):
+    """The crash path form, asserted end to end.
+
+    `\\\\.\\` and `\\\\?\\` both throw from Path.GetFullPath. The device form must
+    also compare CORRECTLY rather than merely survive: returning False for a leaf
+    that is genuinely inside staging would read exactly like the harness
+    misconfiguration the field exists to surface.
+
+    The prefix is applied to a per-test temp path rather than a hard-coded one,
+    because the leaf lives under tmp_path and the two must refer to the same
+    tree for the comparison to mean anything.
+    """
+    exe = _build_probe(PROBE_EXE)
+    leaf = tmp_path / "runtime" / "leaf.bin"
+    leaf.parent.mkdir(parents=True, exist_ok=True)
+    leaf.write_bytes(b"payload")
+    base = str(tmp_path / "runtime")
+
+    cases = [
+        (base, "True"),                    # plain, the control
+        ("\\\\?\\" + base, "True"),        # extended-length prefix
+        ("\\\\.\\" + base, "True"),        # device prefix, drive-qualified
+        ("\\\\.\\PhysicalDrive0\\runtime", "False"),  # a real device name
+        ("\\\\?\\UNC\\server\\share", "False"),       # UNC extended form
+    ]
+    for staging_root, expected in cases:
+        argv = build_probe_argv(
+            scratch=tmp_path,
+            staged=None,
+            protected=None,
+            workspace=REPO / "baby_workspace",
+            staging_root=staging_root,
+            read_file=leaf,
+        )
+        run = subprocess.run([str(exe), *argv], capture_output=True, text=True,
+                             shell=False, timeout=120)
+        assert "NotSupportedException" not in run.stdout, (
+            f"{staging_root!r} still aborts the run"
+        )
+        assert "read_file_in_staging=" + expected in run.stdout, (
+            f"expected read_file_in_staging={expected} for {staging_root!r}; "
+            f"got: {[l for l in run.stdout.splitlines() if 'in_staging' in l]}"
+        )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
+def test_leaf_outside_staging_is_still_reported_as_outside(tmp_path):
+    """The prefix handling must not have made everything look contained.
+
+    A normalisation bug that mapped every path to the same root would satisfy the
+    prefixed cases above while destroying the field's only purpose.
+    """
+    exe = _build_probe(PROBE_EXE)
+    inside = tmp_path / "staging" / "leaf.bin"
+    outside = REPO / "baby_workspace" / "m016_probe.exe"
+    inside.parent.mkdir(parents=True, exist_ok=True)
+    inside.write_bytes(b"payload")
+
+    for label, leaf, expected in (
+        ("leaf inside staging", inside, "True"),
+        ("leaf outside staging", outside, "False"),
+    ):
+        argv = build_probe_argv(
+            scratch=tmp_path,
+            staged=None,
+            protected=None,
+            workspace=REPO / "baby_workspace",
+            staging_root=str(tmp_path / "staging"),
+            read_file=leaf,
+        )
+        run = subprocess.run([str(exe), *argv], capture_output=True, text=True,
+                             shell=False, timeout=120)
+        assert "read_file_in_staging=" + expected in run.stdout, (
+            f"{label}: expected {expected}, got "
+            f"{[l for l in run.stdout.splitlines() if 'in_staging' in l]}"
+        )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
+def test_read_results_survive_a_device_prefixed_staging_root(tmp_path):
+    """The measurement that the crash destroyed must still be reported.
+
+    IsUnder runs immediately before the read results are emitted, so a throw
+    there cost the run its read_file_bytes, read_metadata, write/delete, and
+    cleanup lines. This asserts the whole tail of the report is present.
+    """
+    exe = _build_probe(PROBE_EXE)
+    leaf = tmp_path / "runtime" / "leaf.bin"
+    leaf.parent.mkdir(parents=True, exist_ok=True)
+    leaf.write_bytes(b"0123456789")
+
+    argv = build_probe_argv(
+        scratch=tmp_path,
+        staged=None,
+        protected=None,
+        workspace=REPO / "baby_workspace",
+        staging_root=rf"\\.\{tmp_path}\runtime",
+        read_file=leaf,
+    )
+    run = subprocess.run([str(exe), *argv], capture_output=True, text=True,
+                         shell=False, timeout=120)
+    for expected in ("probe=read_file_bytes result=OS_ALLOWED",
+                     "bytes_observed=10",
+                     "probe=read_metadata",
+                     "probe=workspace_write",
+                     "probe=workspace_read",
+                     "probe=workspace_delete",
+                     "cleanup_state=",
+                     "exit_code="):
+        assert expected in run.stdout, (
+            f"the read result was lost again: {expected!r} missing from output"
+        )
+
+
 def test_schema_remains_v2_after_the_preflight_correction():
     """The preflight fix is a measurement correction, not a new contract.
 

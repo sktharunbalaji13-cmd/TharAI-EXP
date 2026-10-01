@@ -452,21 +452,103 @@ internal static class Probe
         finally { Marshal.FreeHGlobal(p); }
     }
 
+    /// Normalise a path to a comparable absolute form, or return null.
+    ///
+    /// Path.GetFullPath is not total. It throws ArgumentException for an extended
+    /// `\\?\` prefix and NotSupportedException for a device `\\.\` prefix, and it
+    /// resolves a relative path against the process working directory -- which
+    /// differs between an operator shell and a child process, so a relative path
+    /// would be compared against two different bases. Both prefixes denote the
+    /// same object as the plain form, so they are stripped before normalising.
+    ///
+    /// Null means "cannot be compared", and callers must treat that as unknown
+    /// rather than as false-because-outside.
+    static string TryNormalize(string path)
+    {
+        if (path == null) return null;
+        string p = path.Trim();
+        if (p.Length == 0) return null;
+        if (p == "-") return null;
+
+        // \\?\UNC\server\share  ->  \\server\share
+        if (p.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+        {
+            p = @"\\" + p.Substring(8);
+        }
+        else if (p.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase))
+        {
+            p = p.Substring(4);
+        }
+        // \\.\C:\dir is the device namespace spelling of the same volume, so it
+        // strips to the drive-letter form and compares correctly. Returning null
+        // here instead would have reported the leaf as OUTSIDE staging when it is
+        // inside -- a false negative that reads exactly like the harness
+        // misconfiguration this field exists to surface.
+        else if (p.StartsWith(@"\\.\", StringComparison.OrdinalIgnoreCase))
+        {
+            string rest = p.Substring(4);
+            // Only a drive-qualified remainder is a filesystem path. A real
+            // device name such as \\.\PhysicalDrive0 is not, and is left
+            // unnormalised rather than mangled into something that looks valid.
+            if (rest.Length >= 2 && rest[1] == ':' &&
+                (rest[0] >= 'A' && rest[0] <= 'Z' || rest[0] >= 'a' && rest[0] <= 'z'))
+            {
+                p = rest;
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        try
+        {
+            string full = Path.GetFullPath(p);
+            if (full.Length > 3) full = full.TrimEnd('\\');
+            return full;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+        catch (NotSupportedException)
+        {
+            return null;
+        }
+        catch (PathTooLongException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
     /// Whether a path lies inside the staging directory.
     ///
     /// Reported rather than enforced, because the interesting fact is when a
     /// boundary test was aimed somewhere else entirely. Silently rewriting the
     /// target would hide the misconfiguration; refusing it outright would be a
     /// behaviour change beyond this probe's remit.
+    ///
+    /// This is a pure reporting helper, so it must never throw. It previously
+    /// called Path.GetFullPath unguarded, and an extended or device path prefix
+    /// propagated out of it -- taking down the run at the point where the read
+    /// result was about to be reported, so the operator lost every measurement
+    /// after this line. A helper whose job is to describe the harness cannot be
+    /// allowed to end the harness.
     static bool IsUnder(string path, string root)
     {
-        if (path == null || path.Length == 0 || root == null || root.Length == 0)
-            return false;
-        string a = Path.GetFullPath(path).TrimEnd('\\');
-        string b = Path.GetFullPath(root).TrimEnd('\\');
-        return a.Length > b.Length &&
-               a.StartsWith(b, StringComparison.OrdinalIgnoreCase) &&
-               a[b.Length] == '\\';
+        string a = TryNormalize(path);
+        string b = TryNormalize(root);
+        if (a == null || b == null) return false;
+        if (a.Length <= b.Length) return false;
+        if (!a.StartsWith(b, StringComparison.OrdinalIgnoreCase)) return false;
+        // Guard the index: b may be a drive root such as "C:\" already trimmed
+        // to "C:", and a[len] would still be in range, but an empty b is possible
+        // if GetFullPath ever reduced to one.
+        return a.Length > b.Length && a[b.Length] == '\\';
     }
 
     /// Whether an exception means the OS refused access.
