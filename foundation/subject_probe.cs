@@ -560,14 +560,195 @@ internal static class Probe
     /// of the report with it.
     static bool IsAccessDenied(Exception ex)
     {
-        if (ex is UnauthorizedAccessException) return true;
-        return HResultCode(ex) == 5;
+        // The whole chain, because the denial is routinely on an inner exception.
+        // A masked `HResult & 0xFFFF` comparison only ever looked at the outer
+        // exception, which is how a real denial was once read as PATH_ERROR.
+        for (Exception e = ex; e != null; e = e.InnerException)
+        {
+            uint code;
+            if (TryWin32Error(e.HResult, out code) && code == ERROR_ACCESS_DENIED)
+                return true;
+        }
+        return false;
     }
 
-    static int HResultCode(Exception ex)
+    /// The classification of one attempted operation, plus the evidence for it.
+    ///
+    /// `winError` is only meaningful when `winErrorEstablished` is true. A false
+    /// flag means no genuine Win32 error could be identified, and the caller must
+    /// not print the number as though it were one -- that is the defect this type
+    /// exists to prevent.
+    class Verdict
     {
-        // Win32 error codes live in the low 16 bits of the HRESULT.
-        return ex.HResult & 0xFFFF;
+        public string Result;
+        public uint WinError;
+        public bool WinErrorEstablished;
+        public string OuterType;
+        public int OuterHResult;
+        public string InnerType;
+        public int InnerHResult;
+        public int ChainDepth;
+    }
+
+    const int FACILITY_WIN32 = 0x0;      // HRESULT_FROM_WIN32 high word
+    const int CLR_HRESULT_MASK = 0x8013; // COR_* and other runtime-raised codes
+
+    /// Identify a Win32 error from an HRESULT, without inventing one.
+    ///
+    /// Two rules, both learned from a real subject run:
+    ///
+    /// 1. Only an HRESULT whose high word is 0 is a HRESULT_FROM_WIN32 value. The
+    ///    earlier code masked unconditionally (`HResult & 0xFFFF`) and so turned
+    ///    0x80131620 -- the runtime's own IOException code -- into "5664", a
+    ///    number shaped like a Win32 error that has no Win32 meaning. The probe
+    ///    then reported PATH_ERROR and the denial vanished.
+    ///
+    /// 2. A genuine 0x80070005 is ERROR_ACCESS_DENIED. Verified to survive.
+    ///
+    /// Returns false when the code cannot be established as Win32-backed, so the
+    /// caller classifies UNCLASSIFIED rather than inventing a number.
+    static bool TryWin32Error(int hresult, out uint winError)
+    {
+        // Assigned on every path before any `return`: PowerShell 5.1's C# compiler
+        // requires an `out` parameter be definitely assigned on every path.
+        winError = 0;
+        if (hresult >= 0) return false;                 // a .NET success code
+        if (hresult == unchecked((int)0x80004001)) return false;  // E_NOTIMPL
+        if (hresult == unchecked((int)0x80131509)) return false;  // MethodInvocation
+        // HRESULT_FROM_WIN32(code) == 0x80070000 | code: severity ERROR, facility WIN32
+        // (7), so a genuine Win32-backed HRESULT has exactly that high word. This
+        // is what distinguishes 0x80070005 (ERROR_ACCESS_DENIED, real) from
+        // 0x80131620 (the runtime's own IOException code, not real) -- and the
+        // latter is what the previous unconditional mask turned into "5664".
+        if ((uint)(hresult & 0xFFFF0000) == 0x80070000)
+        {
+            winError = (uint)(hresult & 0xFFFF);
+            return true;
+        }
+        return false;
+    }
+
+    /// Walk the exception chain and classify the operation.
+    ///
+    /// A wrapped denial is the common case: `Directory.Delete(path, false)` on a
+    /// denied directory surfaces an outer exception whose inner exception carries
+    /// ERROR_ACCESS_DENIED. Classifying only the outer type loses the verdict, so
+    /// the whole chain is searched and the FIRST genuine Win32 error found decides
+    /// the result. Outer and inner information are always recorded so a reader can
+    /// see which level produced the verdict.
+    static Verdict Classify(Exception ex)
+    {
+        var v = new Verdict();
+        v.OuterType = ex.GetType().FullName;
+        v.OuterHResult = ex.HResult;
+        v.ChainDepth = 1;
+
+        // Collect the chain first, so the outer/inner pair is well defined even
+        // when the verdict comes from deeper down.
+        var chain = new System.Collections.Generic.List<Exception>();
+        for (Exception e = ex; e != null; e = e.InnerException)
+        {
+            chain.Add(e);
+            v.ChainDepth++;
+        }
+        if (chain.Count > 1)
+        {
+            v.InnerType = chain[1].GetType().FullName;
+            v.InnerHResult = chain[1].HResult;
+        }
+
+        // First genuine Win32 error anywhere in the chain wins. Scanning outward-in
+        // means a specific cause beats a generic wrapper.
+        foreach (Exception e in chain)
+        {
+            uint code;
+            if (TryWin32Error(e.HResult, out code))
+            {
+                v.WinError = code;
+                v.WinErrorEstablished = true;
+                v.Result = code == ERROR_ACCESS_DENIED ? "OS_DENIED"
+                        : (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND
+                           || code == ERROR_INVALID_NAME) ? "PATH_ERROR"
+                        : code == ERROR_SHARING_VIOLATION ? "IO_ERROR"
+                        : "OS_ERROR";
+                return v;
+            }
+        }
+
+        // No Win32 error anywhere in the chain. Say so rather than fabricating one.
+        v.Result = "UNCLASSIFIED";
+        return v;
+    }
+
+    static string WinErrorField(Verdict v)
+    {
+        return v.WinErrorEstablished
+            ? " winerror=" + v.WinError
+            : " winerror=UNCLASSIFIED hresult=0x" + v.OuterHResult.ToString("x8");
+    }
+
+    static string ChainField(Verdict v)
+    {
+        string s = " outer=" + v.OuterType + "/0x" + v.OuterHResult.ToString("x8");
+        if (v.InnerType != null)
+            s += " inner=" + v.InnerType + "/0x" + v.InnerHResult.ToString("x8");
+        s += " depth=" + v.ChainDepth;
+        return s;
+    }
+
+    static string Run(string label, Action action)
+    {
+        try
+        {
+            action();
+            Console.WriteLine("probe=" + label + " result=OS_ALLOWED");
+            return "OS_ALLOWED";
+        }
+        catch (Exception ex)
+        {
+            Verdict v = Classify(ex);
+            Console.WriteLine("probe=" + label + " result=" + v.Result +
+                WinErrorField(v) + ChainField(v));
+            return v.Result;
+        }
+    }
+
+    /// Delete a path, but only claim a verdict when there was something to delete.
+    ///
+    /// `File.Delete` on a missing path is a successful no-op, so reporting
+    /// OS_ALLOWED for it would assert a delete permission that was never
+    /// exercised. A subject run hit exactly this: the preceding create was denied,
+    /// so the target never existed, and the no-op delete read as OS_ALLOWED.
+    /// Deleting nothing is NOT_TESTABLE, not a pass.
+    static string RunDelete(string label, string path, bool expectDirectory)
+    {
+        bool present = expectDirectory ? Directory.Exists(path) : File.Exists(path);
+        Console.WriteLine("probe=" + label + " target=" + path);
+        Console.WriteLine("probe=" + label + " target_preexisted=" + present);
+        // target_preexisted is repeated on the RESULT line as well as on its own line,
+        // because a consumer parsing one finding per operation only sees the
+        // result line. Without it here a reader cannot tell a real delete from a
+        // no-op after the fact.
+        if (!present)
+        {
+            Console.WriteLine("probe=" + label +
+                " result=NOT_TESTABLE reason=target_not_present target_preexisted=false");
+            return "NOT_TESTABLE";
+        }
+        try
+        {
+            if (expectDirectory) Directory.Delete(path, true);
+            else File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            Verdict v = Classify(ex);
+            Console.WriteLine("probe=" + label + " result=" + v.Result +
+                WinErrorField(v) + " target_preexisted=true" + ChainField(v));
+            return v.Result;
+        }
+        Console.WriteLine("probe=" + label + " result=OS_ALLOWED target_preexisted=true");
+        return "OS_ALLOWED";
     }
 
     /// A token identifying this invocation, used to name the files the probe owns.
@@ -612,49 +793,6 @@ internal static class Probe
     }
 
     // --- filesystem operations ------------------------------------------------
-
-    /// Reports the true outcome of one attempted operation.
-    ///
-    /// The distinction this must preserve: OS_DENIED means the kernel returned
-    /// ERROR_ACCESS_DENIED (5). Anything else -- a missing file (2), an existing
-    /// name (183), a bad path (3) -- is a PATH_ERROR, not a denial. An earlier
-    /// version of this probe collapsed both into OS_DENIED, which would have let a
-    /// typo masquerade as the OS enforcing the boundary. A caller must never be
-    /// able to read a denial that the OS did not produce.
-    static string Run(string label, Action action)
-    {
-        try
-        {
-            action();
-            Console.WriteLine("probe=" + label + " result=OS_ALLOWED");
-            return "OS_ALLOWED";
-        }
-        catch (UnauthorizedAccessException)
-        {
-            Console.WriteLine("probe=" + label + " result=OS_DENIED winerror=5");
-            return "OS_DENIED";
-        }
-        catch (IOException ex)
-        {
-            // Directory.GetFiles and friends surface a denial as a plain IOException
-            // carrying ERROR_ACCESS_DENIED rather than an UnauthorizedAccessException.
-            // Catching only the latter is what let a denied enumeration become an
-            // unhandled crash and take the rest of the report with it.
-            //
-            // No `when` filter here: Add-Type compiles with the C# 5 compiler that
-            // ships inside PowerShell 5.1, which does not support exception filters.
-            int code = HResultCode(ex);
-            string result = code == 5 ? "OS_DENIED" : "PATH_ERROR";
-            Console.WriteLine("probe=" + label + " result=" + result + " winerror=" + code);
-            return result;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("probe=" + label + " result=ERROR " +
-                ex.GetType().Name + ":" + ex.Message);
-            return "ERROR";
-        }
-    }
 
     static void Touch(string p) { using (var f = File.Create(p)) { f.WriteByte(0); } }
     static void Append(string p) { File.AppendAllText(p, "x"); }
@@ -860,10 +998,12 @@ internal static class Probe
         }
         catch (IOException ex)
         {
-            // An IOException carries a real Win32 code. Reported distinctly so a
-            // sharing violation is never read as an access denial.
-            int code = ex.HResult & 0xFFFF;
-            Console.WriteLine("probe=" + label + " result=IO_ERROR capability=FILE_READ_DATA winerror=" + code);
+            // Reported distinctly so a sharing violation is never read as an access
+            // denial. The code goes through TryWin32Error rather than a mask, so
+            // a runtime-raised IOException cannot present itself as a Win32 error.
+            Verdict rv = Classify(ex);
+            Console.WriteLine("probe=" + label + " result=" + rv.Result +
+                " capability=FILE_READ_DATA" + WinErrorField(rv) + ChainField(rv));
         }
         finally
         {
@@ -1237,21 +1377,22 @@ internal static class Probe
                 Console.WriteLine("probe=delete_child_directory result=NOT_TESTABLE " +
                     "reason=no_delete_fixture_supplied; pass --delete-fixture=<dir>");
             }
-            else if (!deletePreexisted)
-            {
-                Console.WriteLine("probe=delete_child_directory result=NOT_TESTABLE " +
-                    "reason=delete_fixture_absent; the operator must pre-create it");
-            }
+else if (!deletePreexisted)
+              {
+                  // target_preexisted=false on the result line, so a consumer sees
+                  // that nothing was deleted even before reading the reason.
+                  Console.WriteLine("probe=delete_child_directory result=NOT_TESTABLE " +
+                      "reason=delete_fixture_absent target_preexisted=false " +
+                      "note=the operator must pre-create it");
+              }
             else
             {
-                RunGuarded("delete_child_directory", childDelete, () => {
-                    // Recursive, because the operator's fixture may hold a sentinel
-                    // file. A non-recursive delete of a non-empty directory returns
-                    // winerror 145 (directory not empty), which is a PATH_ERROR about
-                    // the fixture's contents and says nothing about whether the
-                    // account may delete the directory itself.
-                    Directory.Delete(childDelete, true); bump();
-                });
+// RunDelete, not RunGuarded: the fixture is asserted present here
+                  // and RunDelete re-asserts it immediately before deleting, so a
+                  // missing target reports NOT_TESTABLE rather than a no-op
+                  // OS_ALLOWED. Recursive, because the operator's fixture may hold a
+                  // sentinel file.
+                  RunDelete("delete_child_directory", childDelete, true); bump();
             }
             if (protectedDir.Length > 0)
             {
@@ -1273,7 +1414,11 @@ internal static class Probe
             string wf = Path.Combine(workspace, "probe_workspace.txt");
             Run("workspace_write", () => { Touch(wf); bump(); });
             Run("workspace_read", () => { File.ReadAllText(wf); bump(); });
-            Run("workspace_delete", () => { Nuke(wf); bump(); });
+            // RunDelete, not Run: if the write above was denied the file was never
+            // created, and File.Delete on a missing path is a successful no-op. That
+            // no-op read as OS_ALLOWED in a subject run, asserting a delete
+            // permission that was never exercised.
+            RunDelete("workspace_delete", wf, false); bump();
         }
 
         // Delete only what this invocation created. The names come from ownedPrefix,
@@ -1308,13 +1453,14 @@ internal static class Probe
                 leftovers = new string[0];
                 bool denied = IsAccessDenied(ex);
                 cleanupState = denied ? "CLEANUP_NOT_PERMITTED" : "CLEANUP_ENUMERATION_FAILED";
+                Verdict cv = Classify(ex);
                 Console.WriteLine("probe=cleanup_enumerate_owned_copies result=" +
                     (denied ? "OS_DENIED" : "ERROR") +
-                    " winerror=" + HResultCode(ex) +
+                    WinErrorField(cv) + ChainField(cv) +
                     (denied
                         ? " note=account cannot list the scratch directory; " +
                           "operator-side cleanup required"
-                        : " " + ex.GetType().Name));
+                        : ""));
             }
             foreach (string leftover in leftovers)
             {

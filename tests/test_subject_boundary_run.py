@@ -351,7 +351,13 @@ def test_delete_uses_a_recursive_delete(probe: Path):
     operator control caught.
     """
     source = PROBE_SOURCE.read_text(encoding="utf-8")
-    assert "Directory.Delete(childDelete, true)" in source, (
+    # The delete moved into RunDelete when the no-op classification was corrected:
+    # it now asserts the fixture exists, then deletes recursively. The recursion
+    # requirement is unchanged, so the assertion follows the call.
+    assert "RunDelete(\"delete_child_directory\"" in source, (
+        "the delete must go through RunDelete so a missing fixture cannot be "
+        "reported as OS_ALLOWED")
+    assert 'if (expectDirectory) Directory.Delete(path, true);' in source, (
         "the delete must be recursive so a fixture holding a sentinel file can be "
         "removed, and the result reflects the delete right rather than the "
         "fixture's emptiness")
@@ -420,15 +426,36 @@ def test_probe_source_uses_no_csharp6_exception_filters():
 
 
 def test_run_helper_handles_both_denial_shapes():
-    """Directory.GetFiles reports a denial as IOException, not UnauthorizedAccessException."""
+    """Directory.GetFiles reports a denial as IOException, not UnauthorizedAccessException.
+
+    Run() no longer catches by exception TYPE. A subject run reported
+    `delete_child_directory result=PATH_ERROR winerror=5664`, and 5664 was
+    0x80131620 & 0xFFFF -- the runtime's own IOException code, masked into a
+    number shaped like a Win32 error. The denial was real; only the classification
+    lost it. Classification now goes through Classify(), which walks the whole
+    exception chain and accepts a Win32 code only from a genuine
+    HRESULT_FROM_WIN32 value.
+    """
     source = PROBE_SOURCE.read_text(encoding="utf-8")
     body = source[source.find("static string Run(string label"):]
     body = body[: body.find("\n    }")]
-    assert "UnauthorizedAccessException" in body
-    assert "OS_DENIED" in body
-    assert "HResultCode" in body, (
-        "the IOException branch must inspect the Win32 code, since that is how a "
-        "denied enumeration arrives")
+    # The verdict strings live in Classify() now; Run() prints whatever it returns.
+    # What Run must still do is delegate rather than classify by type.
+    assert "Classify" in body, (
+        "Run must classify through Classify so a wrapped or runtime-raised "
+        "exception cannot hide a denial")
+    assert "catch (UnauthorizedAccessException)" not in body, (
+        "catching by exception type is what missed the wrapped denial; the chain "
+        "must be inspected instead")
+    assert "static bool TryWin32Error" in source
+    assert "0x80070000" in source, (
+        "only HRESULT_FROM_WIN32 values (high word 0x8007) may be read as Win32 "
+        "errors; masking an arbitrary HRESULT is the original defect")
+
+    classify = source[source.find("static Verdict Classify"):]
+    classify = classify[: classify.find("\n    }")]
+    for verdict in ("OS_DENIED", "PATH_ERROR", "IO_ERROR", "UNCLASSIFIED"):
+        assert verdict in classify, f"{verdict} must be reachable from Classify()"
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")

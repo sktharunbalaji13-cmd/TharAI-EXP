@@ -305,14 +305,32 @@ PREEXISTING_TARGET = "m016_disposable_target.exe"
 
 
 @pytest.fixture
-def harness_fixture():
-    """A fixture this test invocation owns.
+def harness_tree(tmp_path):
+    """A disposable tree mirroring the production subject_runtime shape.
 
-    Ownership by creation: the test creates the file, the test deletes the file.
-    Nothing here depends on a filename the operator reserved.
+    This replaces the previous fixture, which created and deleted files inside
+    the REAL ``subject_runtime``. That was one of three call sites that mutated
+    production during a test run; the subject probe additionally ran against
+    production paths with operator authority, so the probe itself created,
+    renamed and deleted objects there. "This test invocation owns its fixtures"
+    is not a control -- ownership by convention is what produced the incident.
+
+    The shape is preserved rather than flattened, because several assertions here
+    depend on it: ``runtime`` must hold staged files, ``config`` must be the
+    operator-writable scratch, and ``model`` must be enumerable. Tests that read
+    the production tree for regression purposes still do so, read-only, via
+    ``read_production_for_verification``.
     """
-    runtime = REPO / "subject_runtime" / "runtime"
-    runtime.mkdir(parents=True, exist_ok=True)
+    base = tmp_path / "subject_runtime"
+    for name in ("runtime", "model", "config"):
+        (base / name).mkdir(parents=True, exist_ok=True)
+    return base
+
+
+@pytest.fixture
+def harness_fixture(harness_tree):
+    """A fixture this test invocation owns, inside the disposable tree."""
+    runtime = harness_tree / "runtime"
     token = uuid.uuid4().hex[:12]
     fixture = runtime / f"m016_harness_fixture_{token}.exe"
     fixture.write_bytes(b"")
@@ -323,32 +341,36 @@ def harness_fixture():
         fixture.unlink(missing_ok=True)
 
 
-def _run_probe(staged: Path, **overrides):
-    """Run the probe, supplying an operator-owned delete fixture by default.
+def _run_probe(staged: Path, tree: Path, **overrides):
+    """Run the probe against a disposable tree, with a delete fixture supplied.
 
     The delete-directory operation requires a fixture the probe does not create,
-    so a run that expects it to execute must pass one. Tests that deliberately omit
-    it pass ``delete_fixture=None`` explicitly.
+    so a run that expects it to execute must pass one. Tests that deliberately
+    omit it pass ``delete_fixture=None`` explicitly.
+
+    Every path goes through :func:`tests.guarded.run_probe_guarded`, which refuses
+    a repository path before the process starts. The refusal is the protection --
+    not this function being careful about its arguments.
     """
-    delete_target = REPO / "subject_runtime" / "config" / "m016_harness_delete_target"
+    from tests.guarded import run_probe_guarded
+
+    delete_target = tree / "config" / "m016_harness_delete_target"
     if "delete_fixture" not in overrides:
         shutil.rmtree(delete_target, ignore_errors=True)
         delete_target.mkdir(parents=True, exist_ok=True)
         overrides["delete_fixture"] = delete_target
     try:
-        argv = build_probe_argv(
-            scratch=REPO / "subject_runtime" / "config",
+        run, _argv = run_probe_guarded(
+            _build_probe(PROBE_EXE),
+            scratch=tree / "config",
             staged=staged,
-            workspace=REPO / "baby_workspace",
-            **{**dict(traverse=REPO / "subject_runtime",
-                      enumerate_runtime=REPO / "subject_runtime" / "runtime",
-                      enumerate_model=REPO / "subject_runtime" / "model",
-                      enumerate_config=REPO / "subject_runtime" / "config"),
-               **overrides},
+            workspace=tree,
+            traverse=tree,
+            enumerate_runtime=tree / "runtime",
+            enumerate_model=tree / "model",
+            enumerate_config=tree / "config",
+            **overrides,
         )
-        exe = _build_probe(PROBE_EXE)
-        run = subprocess.run([str(exe), *argv], capture_output=True, text=True,
-                             shell=False, timeout=180)
         return parse_probe_output(run.stdout), run.stdout
     finally:
         shutil.rmtree(delete_target, ignore_errors=True)
@@ -359,20 +381,20 @@ def _run_probe(staged: Path, **overrides):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_probe_reports_the_targets_readonly_state(harness_fixture: Path):
+def test_probe_reports_the_targets_readonly_state(harness_fixture: Path, harness_tree: Path):
     """The ReadOnly bit must be visible in the output.
 
     It is a DOS attribute, not an ACL entry, so icacls keeps reporting a clean
     boundary while every write fails. A reader cannot tell the two apart unless
     the probe says which one it hit.
     """
-    parsed, raw = _run_probe(harness_fixture)
+    parsed, raw = _run_probe(harness_fixture, harness_tree)
     assert "staged_target_readonly" in parsed["identity"]
     assert parsed["identity"]["staged_target_readonly"] == "False"
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_readonly_target_is_reported_and_its_copies_are_normalised(harness_fixture: Path):
+def test_readonly_target_is_reported_and_its_copies_are_normalised(harness_fixture: Path, harness_tree: Path):
     """A ReadOnly fixture must not silently produce five misleading OS_DENIEDs.
 
     The probe owns the copies it makes, so it may clear the attribute on them --
@@ -382,7 +404,7 @@ def test_readonly_target_is_reported_and_its_copies_are_normalised(harness_fixtu
     harness_fixture.chmod(0o444)
     subprocess.run(["attrib", "+R", str(harness_fixture)], check=True)
     try:
-        parsed, raw = _run_probe(harness_fixture)
+        parsed, raw = _run_probe(harness_fixture, harness_tree)
         assert parsed["identity"]["staged_target_readonly"] == "True", raw
         # The copies are probe-owned, so they are cleared and therefore writable.
         assert "probe=clear_copy_readonly" in raw
@@ -396,18 +418,18 @@ def test_readonly_target_is_reported_and_its_copies_are_normalised(harness_fixtu
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_clearing_readonly_restores_the_expected_operator_result(harness_fixture: Path):
+def test_clearing_readonly_restores_the_expected_operator_result(harness_fixture: Path, harness_tree: Path):
     """The causal chain, as an executable statement."""
     harness_fixture.chmod(0o444)
     subprocess.run(["attrib", "+R", str(harness_fixture)], check=True)
     try:
-        blocked, _ = _run_probe(harness_fixture)
+        blocked, _ = _run_probe(harness_fixture, harness_tree)
         assert blocked["identity"]["staged_target_readonly"] == "True"
     finally:
         subprocess.run(["attrib", "-R", str(harness_fixture)], capture_output=True)
         harness_fixture.chmod(0o666)
 
-    cleared, raw = _run_probe(harness_fixture)
+    cleared, raw = _run_probe(harness_fixture, harness_tree)
     assert cleared["identity"]["staged_target_readonly"] == "False"
     findings = {f["operation"]: f for f in cleared["findings"]}
     for operation in DESTRUCTIVE_OPERATIONS:
@@ -416,7 +438,7 @@ def test_clearing_readonly_restores_the_expected_operator_result(harness_fixture
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_readiness_fails_if_the_fixture_is_readonly_and_never_cleared(harness_fixture: Path):
+def test_readiness_fails_if_the_fixture_is_readonly_and_never_cleared(harness_fixture: Path, harness_tree: Path):
     """The readiness gate itself must reject a ReadOnly fixture.
 
     Readiness is defined as "the operator gets OS_ALLOWED for all six destructive
@@ -441,8 +463,8 @@ def test_readiness_fails_if_the_fixture_is_readonly_and_never_cleared(harness_fi
 # ---------------------------------------------------------------------------
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_harness_owned_fixture_is_cleaned_up(harness_fixture: Path):
-    parsed, raw = _run_probe(harness_fixture)
+def test_harness_owned_fixture_is_cleaned_up(harness_fixture: Path, harness_tree: Path):
+    parsed, raw = _run_probe(harness_fixture, harness_tree)
     assert parsed["identity"]["cleanup_owned_copies_failed"] == "0", raw
     assert not list(harness_fixture.parent.glob("m016_copy_*")), \
         "probe left owned copies behind"
@@ -450,7 +472,7 @@ def test_harness_owned_fixture_is_cleaned_up(harness_fixture: Path):
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_preexisting_target_survives_the_harness(harness_fixture: Path):
+def test_preexisting_target_survives_the_harness(harness_fixture: Path, harness_tree: Path):
     """The operator's target must be untouched by a harness run.
 
     This is the defect that prompted the ownership model: the earlier test used
@@ -461,13 +483,13 @@ def test_preexisting_target_survives_the_harness(harness_fixture: Path):
     preexisting = runtime / PREEXISTING_TARGET
     preexisting.write_bytes(b"")
     before = preexisting.read_bytes()
-    _run_probe(harness_fixture)
+    _run_probe(harness_fixture, harness_tree)
     assert preexisting.exists(), "the pre-existing target was deleted"
     assert preexisting.read_bytes() == before
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_unrelated_runtime_files_survive(harness_fixture: Path):
+def test_unrelated_runtime_files_survive(harness_fixture: Path, harness_tree: Path):
     """Files the probe did not create are never removed, whatever their name."""
     runtime = harness_fixture.parent
     bystander = runtime / "unrelated_artifact_keepme.bin"
@@ -476,7 +498,7 @@ def test_unrelated_runtime_files_survive(harness_fixture: Path):
     lookalike = runtime / "m016_copy_notthisrun_9999_mod"
     lookalike.write_bytes(b"not mine")
     try:
-        _run_probe(harness_fixture)
+        _run_probe(harness_fixture, harness_tree)
         assert bystander.exists(), "an unrelated file was deleted"
         assert lookalike.exists(), \
             "cleanup matched by prefix alone and deleted a file it did not create"
@@ -486,10 +508,10 @@ def test_unrelated_runtime_files_survive(harness_fixture: Path):
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_run_token_is_unique_per_invocation(harness_fixture: Path):
+def test_run_token_is_unique_per_invocation(harness_fixture: Path, harness_tree: Path):
     """Ownership rests on a per-invocation token, so two runs cannot collide."""
-    _parsed_a, raw_a = _run_probe(harness_fixture)
-    _parsed_b, raw_b = _run_probe(harness_fixture)
+    _parsed_a, raw_a = _run_probe(harness_fixture, harness_tree)
+    _parsed_b, raw_b = _run_probe(harness_fixture, harness_tree)
 
     def token(raw: str) -> str:
         line = [l for l in raw.splitlines() if l.startswith("run_token=")]
@@ -500,14 +522,14 @@ def test_run_token_is_unique_per_invocation(harness_fixture: Path):
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_cleanup_does_not_follow_reparse_points(harness_fixture: Path):
+def test_cleanup_does_not_follow_reparse_points(harness_fixture: Path, harness_tree: Path):
     """A cleanup sweep must not delete through a link into another tree.
 
     The sweep deletes files it enumerated in one directory by exact owned name, so
     it has nothing to follow. This asserts the shape: no directory recursion, and
     every deleted name carries this run's token.
     """
-    parsed, raw = _run_probe(harness_fixture)
+    parsed, raw = _run_probe(harness_fixture, harness_tree)
     token = [l for l in raw.splitlines() if l.startswith("run_token=")][0]
     token_value = token.split("=", 1)[1]
     errors = [l for l in raw.splitlines() if "result=ERROR" in l]
@@ -522,7 +544,7 @@ def test_cleanup_does_not_follow_reparse_points(harness_fixture: Path):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_destructive_scratch_equals_the_staged_files_directory(harness_fixture: Path):
+def test_destructive_scratch_equals_the_staged_files_directory(harness_fixture: Path, harness_tree: Path):
     """Regression: the destructive copies must sit beside the staged target.
 
     When they were created in the scratch directory instead, the copies inherited
@@ -531,7 +553,7 @@ def test_destructive_scratch_equals_the_staged_files_directory(harness_fixture: 
     who holds full control -- so a later OS_DENIED from the subject would have
     said nothing about the runtime subtree.
     """
-    parsed, raw = _run_probe(harness_fixture)
+    parsed, raw = _run_probe(harness_fixture, harness_tree)
     reported = [line for line in raw.splitlines()
                 if line.startswith("destructive_scratch_dir=")]
     assert reported, "the probe did not report its destructive scratch dir"
@@ -539,19 +561,19 @@ def test_destructive_scratch_equals_the_staged_files_directory(harness_fixture: 
     assert value == str(harness_fixture.parent), (
         f"destructive scratch {value!r} != staged directory "
         f"{harness_fixture.parent!r}")
-    assert value != str(REPO / "subject_runtime" / "config"), (
+    assert value != str(harness_tree / "config"), (
         "destructive operations must not target the config directory")
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_five_destructive_operations_are_exercisable_by_the_operator(harness_fixture: Path):
+def test_five_destructive_operations_are_exercisable_by_the_operator(harness_fixture: Path, harness_tree: Path):
     """Requirement 16/18: these five must genuinely be reachable for the operator.
 
     They previously returned OS_DENIED for the operator, which meant the target or
     the fixture was wrong -- not that the boundary worked. A denial the operator
     cannot perform is evidence of a broken test, so each is asserted ALLOWED.
     """
-    parsed, _raw = _run_probe(harness_fixture)
+    parsed, _raw = _run_probe(harness_fixture, harness_tree)
     findings = {f["operation"]: f for f in parsed["findings"]}
     for operation in DESTRUCTIVE_OPERATIONS:
         assert operation in findings, f"{operation} never ran"
@@ -560,17 +582,17 @@ def test_five_destructive_operations_are_exercisable_by_the_operator(harness_fix
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_probe_does_not_leave_its_disposable_copies_behind(harness_fixture: Path):
+def test_probe_does_not_leave_its_disposable_copies_behind(harness_fixture: Path, harness_tree: Path):
     """Cleanup must remove its own artefacts and nothing else."""
     before = {p.name for p in harness_fixture.parent.iterdir()}
-    _run_probe(harness_fixture)
+    _run_probe(harness_fixture, harness_tree)
     after = {p.name for p in harness_fixture.parent.iterdir()}
     assert after == before, f"probe left artefacts behind: {after - before}"
     assert harness_fixture.exists(), "cleanup must not delete the fixture it owns"
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_acl_target_attribute_is_restored_after_the_test(harness_fixture: Path):
+def test_acl_target_attribute_is_restored_after_the_test(harness_fixture: Path, harness_tree: Path):
     """A fixture left ReadOnly invalidates every later write, operator included.
 
     The ReadOnly attribute is not part of the ACL, so icacls keeps reporting a
@@ -578,13 +600,13 @@ def test_acl_target_attribute_is_restored_after_the_test(harness_fixture: Path):
     destructive operations report OS_DENIED for the operator.
     """
     assert not harness_fixture.stat().st_file_attributes & 0x1, "precondition"
-    _run_probe(harness_fixture, acl_target=harness_fixture)
+    _run_probe(harness_fixture, harness_tree, acl_target=harness_fixture)
     assert not harness_fixture.stat().st_file_attributes & 0x1, \
         "probe left the ACL target ReadOnly"
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_operator_positive_control_allows_everything(harness_fixture: Path):
+def test_operator_positive_control_allows_everything(harness_fixture: Path, harness_tree: Path):
     """The operator holds full control, so nothing may be denied.
 
     This is what proves the probe is not hardwired to report denial. Without it,
@@ -592,7 +614,8 @@ def test_operator_positive_control_allows_everything(harness_fixture: Path):
     """
     parsed, _raw = _run_probe(
         harness_fixture,
-        read_file=REPO / "baby_workspace" / "m016_probe.exe",
+        harness_tree,
+        read_file=PROBE_EXE,
         acl_target=harness_fixture,
     )
     findings = {f["operation"]: f for f in parsed["findings_reaching_target"]}

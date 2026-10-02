@@ -222,7 +222,16 @@ def test_probe_distinguishes_denial_from_a_missing_path():
     like a protected one.
     """
     source = PROBE_SOURCE.read_text(encoding="utf-8")
-    assert 'code == 5 ? "OS_DENIED" : "PATH_ERROR"' in source
+    # The intent survives; the spelling changed when classification moved out of a
+    # catch block into Classify(). The old literal asserted a one-line ternary that
+    # only ever read the OUTER exception, which is how a real denial was reported as
+    # PATH_ERROR winerror=5664. The requirement now is that the verdict is derived
+    # from a genuine Win32 code found anywhere in the chain.
+    assert 'ERROR_ACCESS_DENIED ? "OS_DENIED"' in source
+    assert '"PATH_ERROR"' in source
+    assert "static Verdict Classify" in source
+    assert "InnerException" in source, (
+        "a wrapped denial carries its Win32 code on the inner exception")
 
 
 def test_probe_reads_identity_from_the_token_not_the_arguments():
@@ -333,34 +342,47 @@ def _build_probe(exe: Path):
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_probe_reports_the_operator_as_allowed_by_the_os():
+def test_probe_reports_the_operator_as_allowed_by_the_os(tmp_path):
     """The probe must be capable of reporting OS_ALLOWED.
 
     A probe hardwired to print "denied" would satisfy every subject-side
     assertion while proving nothing. As the operator, who holds full control,
     every write must be allowed.
+
+    This previously staged a control executable into the REAL
+    ``subject_runtime/runtime`` and invoked the probe with
+    ``scratch=subject_runtime/config``. The probe runs as operator and creates,
+    renames and deletes objects in its scratch, so that test mutated production
+    directly -- the most severe of the three call sites, because the mutation
+    happened in a child process rather than through a visible ``mkdir``. Now the
+    tree is disposable and every path is authorised by
+    :func:`tests.guarded.run_probe_guarded` before the process starts.
     """
-    out = REPO.parent / "m016_probe_build"
-    exe = _build_probe(out / "probe.exe")
-    staged = REPO / "subject_runtime" / "runtime" / "m016_control.exe"
-    scratch = REPO / "subject_runtime" / "config"
-    staged.parent.mkdir(parents=True, exist_ok=True)
+    from tests.guarded import run_probe_guarded
+
+    tree = tmp_path / "subject_runtime"
+    (tree / "runtime").mkdir(parents=True)
+    (tree / "config").mkdir(parents=True)
+    (tree / "model").mkdir(parents=True)
+    exe = _build_probe(tmp_path / "probe_build" / "probe.exe")
+    staged = tree / "runtime" / "m016_control.exe"
     staged.write_bytes(b"MZ")
-    try:
-        run = subprocess.run(
-            [str(exe), str(scratch), str(staged), "", ""],
-            capture_output=True, text=True, shell=False, timeout=120)
-        output = run.stdout
-        assert "modify_staged_executable result=OS_ALLOWED" in output, output
-        assert "delete_staged_executable result=OS_ALLOWED" in output, output
-        assert "create_file_in_staging_scratch result=OS_ALLOWED" in output
-    finally:
-        staged.unlink(missing_ok=True)
-        # The probe is expected to clean up its own scratch artefacts; assert it
-        # actually did, because a probe that leaves copies behind in
-        # subject_runtime would contaminate every later run.
-        for leftover in ("config/p.txt", "runtime/child.exe"):
-            assert not (REPO / "subject_runtime" / leftover).exists(), leftover
+    run, _argv = run_probe_guarded(
+        exe,
+        scratch=tree / "config",
+        staged=staged,
+        protected=None,
+        workspace=tree,
+    )
+    output = run.stdout
+    assert "modify_staged_executable result=OS_ALLOWED" in output, output
+    assert "delete_staged_executable result=OS_ALLOWED" in output, output
+    assert "create_file_in_staging_scratch result=OS_ALLOWED" in output
+    # The probe is expected to clean up its own scratch artefacts; assert it
+    # actually did, because a probe that leaves copies behind in the tree would
+    # contaminate every later run.
+    for leftover in ("config/p.txt", "runtime/child.exe"):
+        assert not (tree / leftover).exists(), leftover
 
 
 # ---------------------------------------------------------------------------

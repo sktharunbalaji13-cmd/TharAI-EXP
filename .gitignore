@@ -132,3 +132,32 @@ Thumbs.db
 desktop.ini
 .DS_Store
 $RECYCLE.BIN/
+
+# Ruflo local secrets and runtime data
+.env.local
+.env.*.local
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
+
+# --- Local agent tooling (not part of the research record) -------------------
+# These are development-time scaffolding: agent definitions, command docs,
+# skill packs, hooks and machine-specific MCP configuration. They are rewritten
+# or reinstalled by the tooling itself, they describe this workstation rather
+# than the experiment, and they add ~12 MB of non-research content to the
+# repository. The research record is code, tests, docs and evidence.
+.claude/
+.agents/
+.kilo/
+.swarm/
+.claude-flow/
+.mcp.json
+CLAUDE.md
+
+# --- Staged subject runtime binaries ----------------------------------------
+# subject_runtime/runtime/ holds compiled fixtures for the M016 boundary runs.
+# The files currently present are placeholders (two 0-byte files and one 25-byte
+# stub containing fixture text), not working executables. A fake binary in a
+# research repository undermines trust in the evidence that cites it, so they
+# stay out of Git until real ones are produced.
+subject_runtime/runtime/
