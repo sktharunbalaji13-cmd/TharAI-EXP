@@ -54,9 +54,10 @@ developmental-boundary decision are recorded under `docs/evidence/` and
 HUMAN-signed authorization (M057, verified); D3 Gate 1 CLOSED; Gate 2 CLOSED;
 subject NOT LAUNCHED; no model selected or deployed.
 
-- [Project status dashboard](docs/m067-status-dashboard.html) — progress by
+- [Project status dashboard](docs/m067-status-dashboard.md) — progress by
   track, workstream map, milestone table, gates, open human decisions
-  (static, read-only; evidence dated per milestone).
+  (static Markdown, read-only; evidence dated per milestone; full-color
+  single-file HTML twin at `docs/m067-status-dashboard.html` for local viewing).
 
 ## Requirements
 

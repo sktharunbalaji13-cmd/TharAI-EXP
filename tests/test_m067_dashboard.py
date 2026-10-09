@@ -107,3 +107,24 @@ def test_rendered_page_structure_and_content():
         assert digest in text, digest
     assert "<script" not in text.lower()
     assert "PROV-000018" in text
+
+
+def test_markdown_twin_parity():
+    live = D.collect_live_state()
+    md = D.render_markdown(live)
+    page = Path("docs/m067-status-dashboard.md")
+    assert page.exists()
+    assert page.read_text(encoding="utf-8") == md
+    for section in ("## Workstream map", "## Gates (independent of progress)",
+                    "## Authorizations (independent of tests)", "## Milestones M001",
+                    "## Open human decisions", "## Risks",
+                    "## Next recommended milestone", "## Methods & limitations"):
+        assert section in md, section
+    for digest in ("0b7148e0", "4d5c64e5", "d63ff646", "55250a71",
+                   "07efda7a", "e2a3939e", "PROV-000018"):
+        assert digest in md, digest
+    assert "forty-percent figure is not used" in md
+    assert "~40%" not in md
+    for name, _scope, ids in D.TRACKS:
+        done, total = D.track_fraction(ids)
+        assert f"{done}/{total}" in md, name

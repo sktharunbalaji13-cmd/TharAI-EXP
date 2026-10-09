@@ -281,6 +281,131 @@ def _esc(text: object) -> str:
     return _html.escape(str(text), quote=True)
 
 
+def _md_esc(text: object) -> str:
+    return str(text).replace("|", "\\|").replace("\n", " ")
+
+
+_STATUS_DOT = {
+    "COMPLETE": "\U0001F7E9", "HEALTHY": "\U0001F7E9", "CLOSED": "\U0001F7E9",
+    "FROZEN": "\U0001F7E9", "PASS": "\U0001F7E9",
+    "PARTIAL": "\U0001F7E8", "HOLD-ACTIVE": "\U0001F7E8", "BLOCKED": "\U0001F7E8",
+    "MITIGATED": "\U0001F7E8",
+    "MISSING": "\U0001F7E5", "OPEN": "\U0001F7E5", "NONE": "\U0001F7E5",
+    "FAIL": "\U0001F7E5",
+}
+
+
+def _dot(status: str) -> str:
+    return _STATUS_DOT.get(status.split(" ")[0].upper(), "\u2B1C")
+
+
+def render_markdown(live: dict[str, str] | None = None) -> str:
+    """Render the dashboard as GitHub-flavored Markdown. Pure; no I/O, no mutation.
+
+    Same data and rules as render_html (fractions only, no blended percent,
+    gates/authorizations independent of progress). Tile map becomes a status-dot
+    table since Markdown has no colored tiles.
+    """
+    live = live or {}
+    out: list[str] = []
+    out.append("# Baby AI Project Status Dashboard")
+    out.append("")
+    out.append(f"Evidence date: **{EVIDENCE_DATE}** · GIT_HEAD: `{GIT_HEAD}` · "
+               f"Ledger: **{LEDGER_ENTRIES} entries, head {LEDGER_HEAD}, sealed**.")
+    out.append("")
+    out.append("> Read-only status artifact: this page asserts nothing, authorizes "
+               "nothing, and changes nothing. Full-color local version: "
+               "`docs/m067-status-dashboard.html` (open in a browser).")
+    out.append("")
+    if live:
+        out.append("## Live-verified headline state")
+        out.append("")
+        out.append("| Fact | Live value |")
+        out.append("| --- | --- |")
+        for key in ("ledger_entries", "ledger_head", "chain_intact", "seal_intact",
+                    "gate_1", "gate_2_open", "explog_drift", "m064_sha",
+                    "runtime_selection", "model_deployment", "birth_record",
+                    "production_descriptor", "production_content"):
+            out.append(f"| `{key}` | `{live.get(key, '?')}` |")
+        out.append("")
+    out.append("## Progress by track (exact fractions; no blended percent asserted)")
+    out.append("")
+    out.append("Rules: categorical milestones only; HOLD counts as complete (hold "
+               "fulfilled its purpose); specifications excluded from implementation "
+               "counts; tests never count as authorization; readiness never counts "
+               "as operation.")
+    out.append("")
+    out.append("| Track | Scope | Progress |")
+    out.append("| --- | --- | --- |")
+    for name, scope, ids in TRACKS:
+        done, total = track_fraction(ids)
+        filled = int(round(10 * done / total)) if total else 0
+        bar = "\u2588" * filled + "\u2591" * (10 - filled)
+        out.append(f"| {_md_esc(name)} | {_md_esc(scope)} | `{bar}` {done}/{total} |")
+    out.append("")
+    out.append("## Workstream map (dot color only; no weighting)")
+    out.append("")
+    out.append("| Workstream | Status | Note | As of |")
+    out.append("| --- | --- | --- | --- |")
+    for name, status, note, date in WORKSTREAMS:
+        out.append(f"| {_md_esc(name)} | {_dot(status)} {status} "
+                   f"| {_md_esc(note)} | {date} |")
+    out.append("")
+    out.append("Legend: 🟩 complete/healthy/closed/frozen/pass; "
+               "🟨 partial/hold-active/blocked/mitigated (attention, not failure); "
+               "🟥 missing/open/fail; ⬜ evidenced-not-reverified / unknown / specification. "
+               "FAIL on incident-state checks after recovery means 'incident absent', not failure.")
+    out.append("")
+    out.append("## Gates (independent of progress)")
+    out.append("")
+    out.append("| Gate | State | Basis |")
+    out.append("| --- | --- | --- |")
+    for name, state, basis in GATES:
+        out.append(f"| {_md_esc(name)} | {_dot(state)} {state} | {_md_esc(basis)} |")
+    out.append("")
+    out.append("## Authorizations (independent of tests)")
+    out.append("")
+    out.append("| Authorization | State | Note |")
+    out.append("| --- | --- | --- |")
+    for name, state, note in AUTHORIZATIONS:
+        out.append(f"| {_md_esc(name)} | {_md_esc(state)} | {_md_esc(note)} |")
+    out.append("")
+    out.append("## Milestones M001–M067")
+    out.append("")
+    out.append("| ID | Title | Status | Basis | Re-verified M067 |")
+    out.append("| --- | --- | --- | --- | --- |")
+    for mid, title, status, basis, rever in MILESTONES:
+        out.append(f"| {_md_esc(mid)} | {_md_esc(title)} | {_dot(status)} {status} "
+                   f"| {_md_esc(basis)} | {'YES' if rever else 'basis only'} |")
+    out.append("")
+    out.append("## Open human decisions")
+    out.append("")
+    out.append("| Decision | Needed before |")
+    out.append("| --- | --- |")
+    for name, timing in DECISIONS_OPEN:
+        out.append(f"| {_md_esc(name)} | {_md_esc(timing)} |")
+    out.append("")
+    out.append("## Risks")
+    out.append("")
+    out.append("| Risk | State | Note |")
+    out.append("| --- | --- | --- |")
+    for name, state, note in RISKS:
+        out.append(f"| {_md_esc(name)} | {_md_esc(state)} | {_md_esc(note)} |")
+    out.append("")
+    out.append("## Next recommended milestone")
+    out.append("")
+    out.append(f"**{NEXT_MILESTONE[0]}** — {NEXT_MILESTONE[1]}")
+    out.append("")
+    out.append("## Methods & limitations")
+    out.append("")
+    out.append("Headline facts re-verified live via ledger verify + seal check, gate reads, "
+               "file hashing, and existence checks on 2026-10-09. Earlier milestones marked "
+               "EVIDENCED carry their own evidence docs' claims, not fresh M067 verification. "
+               "No blended completion percentage is asserted; the prior informal forty-percent "
+               "figure is not used.")
+    out.append("")
+    return "\n".join(out) + "\n"
+    """Render the static dashboard. Pure string building; no I/O, no mutation."""
 def render_html(live: dict[str, str] | None = None) -> str:
     """Render the static dashboard. Pure string building; no I/O, no mutation."""
     live = live or {}
