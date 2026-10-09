@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="260" role="img" aria-label="Workstream status preview, evidence 2026-10-09">
+<text x="4" y="16" font-size="14" font-family="sans-serif" fill="#111">Baby AI workstreams (2026-10-09)</text>
+<rect x="496.0" y="142.0" width="124.0" height="118.0" fill="#2e7d32" stroke="#fff" stroke-width="1.5"/>
+<text x="500.0" y="158.0" font-size="11" font-family="sans-serif" fill="#fff">Recovery governance &amp;…</text>
+<text x="500.0" y="172.0" font-size="10" font-family="sans-serif" fill="#fff">COMPLETE</text>
+<rect x="372.0" y="142.0" width="124.0" height="118.0" fill="#2e7d32" stroke="#fff" stroke-width="1.5"/>
+<text x="376.0" y="158.0" font-size="11" font-family="sans-serif" fill="#fff">Post-recovery reconci…</text>
+<text x="376.0" y="172.0" font-size="10" font-family="sans-serif" fill="#fff">COMPLETE</text>
+<rect x="496.0" y="24.0" width="124.0" height="118.0" fill="#2e7d32" stroke="#fff" stroke-width="1.5"/>
+<text x="500.0" y="40.0" font-size="11" font-family="sans-serif" fill="#fff">Provenance &amp; seals</text>
+<text x="500.0" y="54.0" font-size="10" font-family="sans-serif" fill="#fff">HEALTHY (known drift)</text>
+<rect x="248.0" y="24.0" width="124.0" height="118.0" fill="#b7791f" stroke="#fff" stroke-width="1.5"/>
+<text x="252.0" y="40.0" font-size="11" font-family="sans-serif" fill="#fff">Isolation &amp; boundarie…</text>
+<text x="252.0" y="54.0" font-size="10" font-family="sans-serif" fill="#fff">PARTIAL</text>
+<rect x="124.0" y="24.0" width="124.0" height="118.0" fill="#b7791f" stroke="#fff" stroke-width="1.5"/>
+<text x="128.0" y="40.0" font-size="11" font-family="sans-serif" fill="#fff">Foundation / model / …</text>
+<text x="128.0" y="54.0" font-size="10" font-family="sans-serif" fill="#fff">PARTIAL</text>
+<rect x="0.0" y="24.0" width="124.0" height="118.0" fill="#b7791f" stroke="#fff" stroke-width="1.5"/>
+<text x="4.0" y="40.0" font-size="11" font-family="sans-serif" fill="#fff">Birth &amp; lifecycle</text>
+<text x="4.0" y="54.0" font-size="10" font-family="sans-serif" fill="#fff">PARTIAL</text>
+<rect x="248.0" y="142.0" width="124.0" height="118.0" fill="#b7791f" stroke="#fff" stroke-width="1.5"/>
+<text x="252.0" y="158.0" font-size="11" font-family="sans-serif" fill="#fff">Launch &amp; sessions</text>
+<text x="252.0" y="172.0" font-size="10" font-family="sans-serif" fill="#fff">BLOCKED</text>
+<rect x="372.0" y="24.0" width="124.0" height="118.0" fill="#b7791f" stroke="#fff" stroke-width="1.5"/>
+<text x="376.0" y="40.0" font-size="11" font-family="sans-serif" fill="#fff">Observatory &amp; telemet…</text>
+<text x="376.0" y="54.0" font-size="10" font-family="sans-serif" fill="#fff">PARTIAL</text>
+<rect x="0.0" y="142.0" width="124.0" height="118.0" fill="#2e7d32" stroke="#fff" stroke-width="1.5"/>
+<text x="4.0" y="158.0" font-size="11" font-family="sans-serif" fill="#fff">Developmental governa…</text>
+<text x="4.0" y="172.0" font-size="10" font-family="sans-serif" fill="#fff">COMPLETE</text>
+<rect x="124.0" y="142.0" width="124.0" height="118.0" fill="#b7791f" stroke="#fff" stroke-width="1.5"/>
+<text x="128.0" y="158.0" font-size="11" font-family="sans-serif" fill="#fff">Human control &amp; secur…</text>
+<text x="128.0" y="172.0" font-size="10" font-family="sans-serif" fill="#fff">PARTIAL</text>
+</svg>

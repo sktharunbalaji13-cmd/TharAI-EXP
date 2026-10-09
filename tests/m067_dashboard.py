@@ -123,7 +123,8 @@ MILESTONES: tuple[tuple[str, str, str, str, bool], ...] = (
     ("M064", "Developmental boundary decided (Option C, sealed)", "COMPLETE", "canonical e2a3939e… verified live 2026-10-09; PROV-000018", True),
     ("M065", "Implementation-preparation contract (F1 BLOCKING found)", "COMPLETE", "session report; SPECIFICATION row", True),
     ("M066", "F1 staging/recovery remediation (verified)", "COMPLETE", "staging.py guards + 10/10 tests; production unchanged", True),
-    ("M067", "Status dashboard (this milestone)", "OPEN", "in progress; completes on accepted report", True),
+    ("M067", "Status dashboard (this milestone)", "COMPLETE", "report accepted; page+tests delivered", True),
+    ("M068", "Graphical treemap dashboard", "OPEN", "in progress; completes on accepted report", True),
 )
 
 COMPLETE_LIKE = ("COMPLETE", "HOLD-ACTIVE", "EVIDENCED")
@@ -137,8 +138,18 @@ TRACKS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
      "M058–M061",
      ("M058", "M059", "M060", "M061")),
     ("Developmental governance & safety",
-     "M062–M067",
-     ("M062", "M063", "M064", "M065", "M066", "M067")),
+     "M062–M068",
+     ("M062", "M063", "M064", "M065", "M066", "M067", "M068")),
+    ("Laboratory foundation, instruments & holds",
+     "M001–M052I (machinery, instruments, sessions, holds; statuses per own evidence)",
+     ("M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009",
+      "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018",
+      "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027",
+      "M028", "M029", "M030", "M031", "M032", "M033", "M034", "M035", "M036",
+      "M037", "M038", "M039", "M040A", "M040B", "M040C", "M041", "M042",
+      "M043", "M044", "M045", "M046", "M047", "M048", "M049", "M050", "M051",
+      "M052", "M052A", "M052B", "M052C", "M052D", "M052E", "M052F", "M052G",
+      "M052H", "M052I")),
 )
 
 WORKSTREAMS: tuple[tuple[str, str, str, str], ...] = (
@@ -405,6 +416,380 @@ def render_markdown(live: dict[str, str] | None = None) -> str:
                "figure is not used.")
     out.append("")
     return "\n".join(out) + "\n"
+
+
+# --------------------------------------------------------------------------
+# M068 -- graphical treemap. Same canonical data; genuine squarified layout.
+# --------------------------------------------------------------------------
+#
+# SIZING RULE (binding): every milestone tile has weight 1, i.e. tile area is
+# proportional to exactly one defined milestone unit. Track area is therefore
+# proportional to milestone count. No other weights exist; tile size means
+# "how many defined milestones", nothing about importance or effort.
+#
+# COLOR RULE (binding): COMPLETE->green, except kind SPEC->blue (specification
+# delivered, implementation not performed); HOLD-ACTIVE/BLOCKED/OPEN->amber
+# (attention: active stop, awaiting input, or in progress -- never failure);
+# EVIDENCED->gray (documented basis, not freshly verified); red is reserved for
+# a confirmed blocking defect/failed criterion (none present; legend says so).
+
+KIND: dict[str, str] = {}
+for _mid, _kind in (
+    ("M054", "IMPL"), ("M056", "IMPL"), ("M057", "IMPL"), ("M060", "IMPL"),
+    ("M064", "IMPL"), ("M066", "IMPL"), ("M067", "IMPL"), ("M068", "IMPL"),
+    ("M063", "SPEC"), ("M065", "SPEC"),
+    ("M031", "HOLD"), ("M052Z", "HOLD"), ("M053", "HOLD"),
+    ("M054B", "REVIEW"), ("M055", "REVIEW"), ("M058", "REVIEW"),
+    ("M059", "REVIEW"), ("M061", "REVIEW"), ("M062", "REVIEW"),
+):
+    KIND[_mid] = _kind
+
+
+def _kind_of(mid: str) -> str:
+    return KIND.get(mid, "EVIDENCE")
+
+
+REMAINING: dict[str, str] = {
+    "M014": "Human model/runtime declaration required; birth BLOCKED until then.",
+    "M031": "Hold active: awaits human interactive session + decisions.",
+    "M052Z": "Hold active: awaits director decision.",
+    "M053": "Hold active: awaits human recovery-governance decision.",
+    "M067": "None (report accepted).",
+    "M068": "Acceptance of this graphical dashboard.",
+}
+_REMAINING_DEFAULT_CLOSED = "None (closed per its success criteria)."
+_REMAINING_DEFAULT_OPEN = ("No outstanding work recorded in the M067 basis; "
+                           "underlying claims not re-verified.")
+
+
+def _remaining_of(mid: str, status: str) -> str:
+    if mid in REMAINING:
+        return REMAINING[mid]
+    return (_REMAINING_DEFAULT_CLOSED if status in ("COMPLETE", "HOLD-ACTIVE")
+            else _REMAINING_DEFAULT_OPEN)
+
+
+COLORS = {
+    "green": "#2e7d32",
+    "amber": "#b7791f",
+    "gray": "#616161",
+    "red": "#c62828",
+    "blue": "#1565c0",
+}
+
+
+def tile_color(status: str, kind: str) -> str:
+    """Status color per the binding rule above. Never green for stale/unknown."""
+    if kind == "SPEC":
+        return "blue"
+    if status == "COMPLETE":
+        return "green"
+    if status in ("HOLD-ACTIVE", "BLOCKED", "OPEN"):
+        return "amber"
+    return "gray"
+
+
+def _squarify(items: list[tuple[str, float]],
+              x: float, y: float, w: float, h: float) -> dict[str, tuple[float, float, float, float]]:
+    """Squarified treemap layout. Deterministic: sorts by (-weight, key).
+
+    Returns {key: (x, y, w, h)} in the same coordinate space. Rectangles are
+    non-overlapping, contained in [x,x+w]x[y,y+h], and areas are proportional
+    to weights (up to floating-point rounding).
+    """
+    ordered = sorted(items, key=lambda kv: (-kv[1], kv[0]))
+    total = sum(weight for _, weight in ordered)
+    if total <= 0 or w <= 0 or h <= 0 or not ordered:
+        return {}
+    scale = (w * h) / total
+    rects: dict[str, tuple[float, float, float, float]] = {}
+    remaining = list(ordered)
+    cx, cy, cw, ch = x, y, w, h
+    while remaining:
+        row: list[tuple[str, float]] = []
+        row_sum = 0.0
+        best = float("inf")
+        while remaining:
+            candidate = remaining[0]
+            trial = row_sum + candidate[1]
+            worst = _worst(row + [candidate], trial, cw, ch, scale)
+            if worst <= best:
+                best = worst
+                row.append(candidate)
+                row_sum = trial
+                remaining.pop(0)
+            else:
+                break
+        if not row:
+            row.append(remaining.pop(0))
+            row_sum = row[0][1]
+        _layout_row(row, row_sum, scale, rects, cx, cy, cw, ch)
+        used = (row_sum * scale) / (ch if cw >= ch else cw)
+        if cw >= ch:
+            cx += used
+            cw -= used
+        else:
+            cy += used
+            ch -= used
+    return rects
+
+
+def _worst(row: list[tuple[str, float]], row_sum: float,
+           cw: float, ch: float, scale: float) -> float:
+    side = min(cw, ch)
+    if side <= 0 or row_sum <= 0:
+        return float("inf")
+    areas = [weight * scale for _, weight in row]
+    worst = 0.0
+    for area in areas:
+        ratio = (side * side * max(area, 1e-12)) / ((row_sum * scale) ** 2)
+        worst = max(worst, ratio, 1 / ratio if ratio else float("inf"))
+    return worst
+
+
+def _layout_row(row: list[tuple[str, float]], row_sum: float, scale: float,
+                rects: dict[str, tuple[float, float, float, float]],
+                cx: float, cy: float, cw: float, ch: float) -> None:
+    if row_sum <= 0:
+        return
+    offset = 0.0
+    if cw >= ch:
+        thickness = (row_sum * scale) / ch if ch > 0 else 0.0
+        for key, weight in row:
+            length = (weight * scale) / thickness if thickness > 0 else 0.0
+            rects[key] = (cx, cy + offset, thickness, length)
+            offset += length
+    else:
+        thickness = (row_sum * scale) / cw if cw > 0 else 0.0
+        for key, weight in row:
+            length = (weight * scale) / thickness if thickness > 0 else 0.0
+            rects[key] = (cx + offset, cy, length, thickness)
+            offset += length
+
+
+def build_treemap(width: float = 1000.0, height: float = 620.0) -> dict[str, Any]:
+    """Two-level treemap: tracks, then one unit-weight tile per milestone.
+
+    Returns track rects, tile rects keyed by milestone id, and tile metadata
+    (label, status, kind, color, basis, evidence date, remaining work).
+    """
+    by_id = {mid: (title, status, basis, rever)
+             for mid, title, status, basis, rever in MILESTONES}
+    track_items = [(_track_key(name), float(len(ids))) for name, _, ids in TRACKS]
+    track_rects = _squarify(track_items, 0.0, 0.0, width, height)
+    tiles: dict[str, dict[str, Any]] = {}
+    tile_rects: dict[str, tuple[float, float, float, float]] = {}
+    for (name, _scope, ids), tkey in zip(
+            [t for t in TRACKS], [_track_key(n) for n, _, _ in TRACKS]):
+        rect = track_rects.get(tkey)
+        if rect is None:
+            continue
+        tx, ty, tw, th = rect
+        pad = 0.0
+        inner = _squarify([(mid, 1.0) for mid in ids],
+                           tx + pad, ty + pad, max(tw - 2 * pad, 1.0),
+                           max(th - 2 * pad, 1.0))
+        for mid, r in inner.items():
+            title, status, basis, rever = by_id[mid]
+            kind = _kind_of(mid)
+            tiles[mid] = {
+                "track": name, "rect": r, "title": title, "status": status,
+                "kind": kind, "color": tile_color(status, kind), "basis": basis,
+                "evidence": ("live " + EVIDENCE_DATE if rever
+                             else "basis only; not re-verified"),
+                "remaining": _remaining_of(mid, status),
+            }
+            tile_rects[mid] = r
+    tracks = [{"name": name, "scope": scope, "ids": list(ids),
+               "rect": track_rects.get(_track_key(name))}
+              for name, scope, ids in TRACKS]
+    return {"width": width, "height": height, "tracks": tracks, "tiles": tiles}
+
+
+def _track_key(name: str) -> str:
+    return "track:" + name
+
+
+_GRAPH_CSS = """
+body{font-family:system-ui,Segoe UI,Arial,sans-serif;margin:0;background:#141414;color:#f0f0f0}
+header{padding:1em 1.5em;background:#0a0a0a;border-bottom:1px solid #333}
+h1{font-size:1.4em;margin:.2em 0}
+.strip{display:flex;flex-wrap:wrap;gap:.5em;padding:.8em 1.5em;background:#1d1d1d}
+.strip div{background:#222;border:1px solid #444;border-radius:4px;padding:.3em .6em;font-size:.85em}
+#map{position:relative;width:96%;max-width:1000px;aspect-ratio:1000/620;margin:1em auto;background:#0a0a0a;border:1px solid #333}
+.track{position:absolute;border:2px solid #555;box-sizing:border-box}
+.track>span{position:absolute;top:2px;left:4px;font-size:11px;color:#bbb;z-index:1}
+.tile{position:absolute;box-sizing:border-box;border:1px solid #0a0a0a;overflow:hidden;
+font-size:11px;line-height:1.2;padding:2px;cursor:pointer;color:#fff;text-shadow:0 1px 2px #000}
+.tile:focus{outline:2px solid #fff;outline-offset:-2px}
+.tile.hidden{display:none}
+#detail{max-width:1000px;margin:1em auto;padding:1em;background:#1d1d1d;border:1px solid #444;min-height:6em}
+#detail h3{margin:.2em 0}
+.filters{padding:.5em 1.5em}
+.filters button{margin:.2em;padding:.3em .7em;cursor:pointer}
+.legend{padding:.5em 1.5em;font-size:.85em;color:#ccc}
+.access{max-width:1000px;margin:1em auto;padding:0 1.5em}
+table{border-collapse:collapse;width:100%;font-size:.8em}
+th,td{border:1px solid #555;padding:.3em .5em;text-align:left}
+th{background:#222}
+"""
+
+
+_GRAPH_JS = """
+const detail=document.getElementById('detailbody');
+function show(el){detail.innerHTML='<h3>'+el.dataset.mid+' — '+el.dataset.title+'</h3>'
++'<p><b>Status:</b> '+el.dataset.status+' ('+el.dataset.kind+') · '
++'<b>Track:</b> '+el.dataset.track+'</p>'
++'<p><b>Basis:</b> '+el.dataset.basis+'</p>'
++'<p><b>Evidence:</b> '+el.dataset.evidence+'</p>'
++'<p><b>Remaining work:</b> '+el.dataset.remaining+'</p>';}
+document.querySelectorAll('.tile').forEach(function(el){
+el.addEventListener('click',function(){show(el);});
+el.addEventListener('keydown',function(ev){if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();show(el);}});});
+function filterStatus(s){document.querySelectorAll('.tile').forEach(function(el){
+el.classList.toggle('hidden',s!=='all'&&el.dataset.color!==s);});}
+"""
+
+
+def render_graphical_html(live: dict[str, str] | None = None) -> str:
+    """Full graphical treemap page. Static + inline vanilla JS/CSS only.
+
+    No external scripts, stylesheets, images, fonts, or network requests.
+    Gates/authorizations render in a panel separate from the treemap so gate
+    state is never confused with progress. Snapshot date is displayed; nothing
+    here implies live updating.
+    """
+    live = live or {}
+    tree = build_treemap()
+    width, height = tree["width"], tree["height"]
+    parts = ["<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+             "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+             "<title>Baby AI — Project Progress (M068 treemap)</title>"
+             f"<style>{_GRAPH_CSS}</style></head><body>"]
+    parts.append("<header><h1>Baby AI — Project Progress</h1>"
+                 f"<p>Snapshot/evidence date: <b>{EVIDENCE_DATE}</b> · "
+                 f"Ledger: <b>{LEDGER_ENTRIES} entries, head {LEDGER_HEAD}</b> · "
+                 "Point-in-time render from canonical dashboard data; not live-updating. "
+                 "This page asserts nothing, authorizes nothing, changes nothing.</p></header>")
+    parts.append("<div class=\"strip\" aria-label=\"Workstream summary\">")
+    for name, _scope, ids in TRACKS:
+        done, total = track_fraction(ids)
+        parts.append(f"<div><b>{_html.escape(name)}</b> — {done}/{total} milestones</div>")
+    parts.append("</div>")
+    parts.append("<div class=\"filters\" role=\"toolbar\" aria-label=\"Filter by status\">"
+                 "Filter: <button onclick=\"filterStatus('all')\">all</button> "
+                 "<button onclick=\"filterStatus('green')\">verified complete</button> "
+                 "<button onclick=\"filterStatus('amber')\">attention</button> "
+                 "<button onclick=\"filterStatus('gray')\">basis only</button> "
+                 "<button onclick=\"filterStatus('blue')\">specification</button></div>")
+    parts.append(f"<div id=\"map\" role=\"group\" aria-label=\"Milestone treemap\">")
+    for track in tree["tracks"]:
+        rect = track["rect"]
+        if rect is None:
+            continue
+        x, y, w, h = (100 * v / (width if i % 2 == 0 else height)
+                       for i, v in enumerate(rect))
+        parts.append(
+            f"<div class=\"track\" style=\"left:{x:.2f}%;top:{y:.2f}%;"
+            f"width:{w:.2f}%;height:{h:.2f}%;\">"
+            f"<span>{_html.escape(track['name'])}</span>")
+        for mid in track["ids"]:
+            tile = tree["tiles"].get(mid)
+            if tile is None:
+                continue
+            tx, ty, tw, th = tile["rect"]
+            lx, ly, lw, lh = (100 * tx / width, 100 * ty / height,
+                              100 * tw / width, 100 * th / height)
+            color = COLORS[tile["color"]]
+            label = mid if lw > 4.5 and lh > 6 else ""
+            parts.append(
+                f"<div class=\"tile\" tabindex=\"0\" role=\"button\" "
+                f"aria-label=\"{_html.escape(mid)}: {_html.escape(tile['title'])} "
+                f"({_html.escape(tile['status'])})\" "
+                f"style=\"left:{lx:.2f}%;top:{ly:.2f}%;width:{lw:.2f}%;height:{lh:.2f}%;"
+                f"background:{color};\" "
+                f"data-mid=\"{_html.escape(mid)}\" "
+                f"data-title=\"{_html.escape(tile['title'])}\" "
+                f"data-status=\"{_html.escape(tile['status'])}\" "
+                f"data-kind=\"{_html.escape(tile['kind'])}\" "
+                f"data-color=\"{_html.escape(tile['color'])}\" "
+                f"data-track=\"{_html.escape(tile['track'])}\" "
+                f"data-basis=\"{_html.escape(tile['basis'])}\" "
+                f"data-evidence=\"{_html.escape(tile['evidence'])}\" "
+                f"data-remaining=\"{_html.escape(tile['remaining'])}\">"
+                f"{_html.escape(label)}</div>")
+        parts.append("</div>")
+    parts.append("</div>")
+    parts.append("<div id=\"detail\" aria-live=\"polite\"><h3>Tile detail</h3>"
+                 "<div id=\"detailbody\">Click or Tab to a tile and press Enter "
+                 "for its tasks, evidence, and remaining work. Small tiles without "
+                 "visible labels are listed in full below.</div></div>")
+    parts.append("<div class=\"legend\">Legend — tile area = exactly one defined "
+                 "milestone unit (all tiles equal area; track area = milestone count; "
+                 "size means count, not importance). "
+                 "Colors: <b style=\"color:#7fd67f\">green</b>=verified complete · "
+                 "<b style=\"color:#e0a83c\">amber</b>=attention (hold / awaiting input / "
+                 "in progress — never failure) · "
+                 "<b style=\"color:#bdbdbd\">gray</b>=documented basis only, not freshly "
+                 "verified · <b style=\"color:#7fa8e0\">blue</b>=specification delivered, "
+                 "implementation not performed · red=confirmed blocking defect "
+                 "(none present). A specification is not implementation; a test is not "
+                 "authorization; readiness is not operation.</div>")
+    parts.append("<div class=\"access\"><h2>Gates &amp; authorizations (separate from progress)</h2>"
+                 "<table><tr><th>Gate / authorization</th><th>State</th></tr>")
+    for name, state, _basis in GATES:
+        parts.append(f"<tr><td>{_html.escape(name)}</td><td>{_html.escape(state)}</td></tr>")
+    for name, state, _note in AUTHORIZATIONS:
+        parts.append(f"<tr><td>{_html.escape(name)}</td><td>{_html.escape(state)}</td></tr>")
+    parts.append("</table>")
+    parts.append("<h2>Accessible tile list (every tile, regardless of label space)</h2>"
+                 "<details><summary>Show all milestone tiles</summary>"
+                 "<table><tr><th>ID</th><th>Title</th><th>Status</th><th>Kind</th>"
+                 "<th>Evidence</th><th>Remaining work</th></tr>")
+    for mid, _t, _s, _b, _r in MILESTONES:
+        tile = tree["tiles"].get(mid)
+        if tile is None:
+            continue
+        parts.append(f"<tr><td>{_html.escape(mid)}</td><td>{_html.escape(tile['title'])}</td>"
+                     f"<td>{_html.escape(tile['status'])}</td>"
+                     f"<td>{_html.escape(tile['kind'])}</td>"
+                     f"<td>{_html.escape(tile['evidence'])}</td>"
+                     f"<td>{_html.escape(tile['remaining'])}</td></tr>")
+    parts.append("</table></details></div>")
+    parts.append(f"<script>{_GRAPH_JS}</script></body></html>")
+    return "\n".join(parts)
+
+
+def render_preview_svg() -> str:
+    """Compact static workstream preview for README embedding.
+
+    Generated deterministically from WORKSTREAMS (same canonical data).
+    Grayscale-friendly status dots + labels; ~600px wide. Labeled preview,
+    not a live view: caption carries the evidence date.
+    """
+    width, height = 620.0, 260.0
+    items = [(name, 1.0) for name, _, _, _ in WORKSTREAMS]
+    rects = _squarify(items, 0.0, 24.0, width, height - 24.0)
+    dots = {"COMPLETE": "#2e7d32", "HEALTHY": "#2e7d32", "PARTIAL": "#b7791f",
+            "BLOCKED": "#b7791f", "EVIDENCED": "#616161"}
+    svg = [f"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{int(width)}\" "
+           f"height=\"{int(height)}\" role=\"img\" "
+           f"aria-label=\"Workstream status preview, evidence {EVIDENCE_DATE}\">",
+           f"<text x=\"4\" y=\"16\" font-size=\"14\" font-family=\"sans-serif\" "
+           f"fill=\"#111\">Baby AI workstreams ({EVIDENCE_DATE})</text>"]
+    for (name, status, _note, _date), rect in zip(WORKSTREAMS, [rects[k] for k, _ in items]):
+        x, y, w, h = rect
+        color = dots.get(status.split(" ")[0], "#616161")
+        short = name if len(name) < 22 else name[:21] + "…"
+        svg.append(f"<rect x=\"{x:.1f}\" y=\"{y:.1f}\" width=\"{w:.1f}\" height=\"{h:.1f}\" "
+                   f"fill=\"{color}\" stroke=\"#fff\" stroke-width=\"1.5\"/>")
+        if w > 90 and h > 28:
+            svg.append(f"<text x=\"{x + 4:.1f}\" y=\"{y + 16:.1f}\" font-size=\"11\" "
+                       f"font-family=\"sans-serif\" fill=\"#fff\">{_html.escape(short)}</text>")
+            svg.append(f"<text x=\"{x + 4:.1f}\" y=\"{y + 30:.1f}\" font-size=\"10\" "
+                       f"font-family=\"sans-serif\" fill=\"#fff\">{_html.escape(status)}</text>")
+    svg.append("</svg>")
+    return "\n".join(svg) + "\n"
     """Render the static dashboard. Pure string building; no I/O, no mutation."""
 def render_html(live: dict[str, str] | None = None) -> str:
     """Render the static dashboard. Pure string building; no I/O, no mutation."""

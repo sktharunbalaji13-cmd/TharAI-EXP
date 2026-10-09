@@ -30,7 +30,8 @@ Rules: categorical milestones only; HOLD counts as complete (hold fulfilled its 
 | --- | --- | --- |
 | Recovery governance & execution | M052J–M057 + M054B (decision iterations counted once as M052Q–Y) | `██████████` 15/15 |
 | Post-recovery review & reconciliation | M058–M061 | `██████████` 4/4 |
-| Developmental governance & safety | M062–M067 | `████████░░` 5/6 |
+| Developmental governance & safety | M062–M068 | `█████████░` 6/7 |
+| Laboratory foundation, instruments & holds | M001–M052I (machinery, instruments, sessions, holds; statuses per own evidence) | `██████████` 62/63 |
 
 ## Workstream map (dot color only; no weighting)
 
@@ -165,7 +166,8 @@ Legend: 🟩 complete/healthy/closed/frozen/pass; 🟨 partial/hold-active/block
 | M064 | Developmental boundary decided (Option C, sealed) | 🟩 COMPLETE | canonical e2a3939e… verified live 2026-10-09; PROV-000018 | YES |
 | M065 | Implementation-preparation contract (F1 BLOCKING found) | 🟩 COMPLETE | session report; SPECIFICATION row | YES |
 | M066 | F1 staging/recovery remediation (verified) | 🟩 COMPLETE | staging.py guards + 10/10 tests; production unchanged | YES |
-| M067 | Status dashboard (this milestone) | 🟥 OPEN | in progress; completes on accepted report | YES |
+| M067 | Status dashboard (this milestone) | 🟩 COMPLETE | report accepted; page+tests delivered | YES |
+| M068 | Graphical treemap dashboard | 🟥 OPEN | in progress; completes on accepted report | YES |
 
 ## Open human decisions
 

@@ -19,6 +19,20 @@ What exists is the complete transition machinery: a gated birth ceremony, a
 deterministic environment, a subject architecture, and a runtime contract layer
 for a model that has not been installed. What does not exist is a mind.
 
+## Project Progress Dashboard
+
+![Workstream status preview](docs/m068-treemap-preview.svg)
+
+Current status (evidence-dated, read-only): [Markdown dashboard](docs/m067-status-dashboard.md)
+with progress by track, workstream map, milestone table, gates, and open human decisions.
+
+Full graphical treemap (same verified data, click/hover details, filters):
+[docs/m068-treemap.html](docs/m068-treemap.html) — open the file in a local browser.
+
+GitHub Pages is not configured for this repository (no Pages settings, workflow,
+or published URL), so the graphical page is not publicly deployed; the links above
+resolve within a checkout.
+
 The absence is deliberate. Everything in this project is an *observation
 instrument*, and an instrument that also contains the thing it measures cannot be
 trusted to report on it. So there is no simulated subject presented as real, no
