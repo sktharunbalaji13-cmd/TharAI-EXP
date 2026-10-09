@@ -21,6 +21,12 @@ from pathlib import Path
 
 import pytest
 
+# Module-level on purpose. M024 routed this file's seven `attrib` sites through the guard,
+# and the helpers calling them are defined ABOVE the fixture whose function-local import
+# brings `run_probe_guarded` into scope. A local import is invisible at module scope, so
+# without this the helpers raise NameError at fixture setup.
+from tests.guarded import attrib_guarded, attrib_succeeded
+
 from foundation.boundary_test import (
     HUMAN_VERIFIED_IDENTITY,
     INTEGRITY_RIDS,
@@ -304,6 +310,24 @@ DESTRUCTIVE_OPERATIONS = (
 PREEXISTING_TARGET = "m016_disposable_target.exe"
 
 
+def _set_fixture_readonly(path: Path) -> None:
+    """Set the read-only attribute on a disposable fixture.
+
+    Replaces ``subprocess.run(["attrib", "+R", ...], check=True)``, which M024 found
+    was a no-op safety net: ``attrib`` returns 0 for an object it did not process, so
+    ``check=True`` could never fire. :func:`attrib_succeeded` requires both a zero
+    return code and an absence of per-path failure lines, which is strictly stronger.
+    """
+    result = attrib_guarded(path, ["+R"])
+    assert attrib_succeeded(result), (
+        f"attrib did not set the read-only attribute: {result.stdout}{result.stderr}")
+
+
+def _clear_fixture_readonly(path: Path) -> None:
+    """Clear the read-only attribute so the fixture can be written and removed."""
+    attrib_guarded(path, ["-R"])
+
+
 @pytest.fixture
 def harness_tree(tmp_path):
     """A disposable tree mirroring the production subject_runtime shape.
@@ -337,7 +361,7 @@ def harness_fixture(harness_tree):
     yield fixture
     if fixture.exists():
         fixture.chmod(0o666)
-        subprocess.run(["attrib", "-R", str(fixture)], capture_output=True)
+        attrib_guarded(fixture, ["-R"])
         fixture.unlink(missing_ok=True)
 
 
@@ -352,7 +376,7 @@ def _run_probe(staged: Path, tree: Path, **overrides):
     a repository path before the process starts. The refusal is the protection --
     not this function being careful about its arguments.
     """
-    from tests.guarded import run_probe_guarded
+    from tests.guarded import attrib_guarded, attrib_succeeded, run_probe_guarded
 
     delete_target = tree / "config" / "m016_harness_delete_target"
     if "delete_fixture" not in overrides:
@@ -402,7 +426,7 @@ def test_readonly_target_is_reported_and_its_copies_are_normalised(harness_fixtu
     attributable to an attribute rather than being read as a permission result.
     """
     harness_fixture.chmod(0o444)
-    subprocess.run(["attrib", "+R", str(harness_fixture)], check=True)
+    _set_fixture_readonly(harness_fixture)
     try:
         parsed, raw = _run_probe(harness_fixture, harness_tree)
         assert parsed["identity"]["staged_target_readonly"] == "True", raw
@@ -413,7 +437,7 @@ def test_readonly_target_is_reported_and_its_copies_are_normalised(harness_fixtu
             assert findings[operation]["outcome"] == Outcome.OS_ALLOWED.value, \
                 f"{operation}: {findings[operation]}"
     finally:
-        subprocess.run(["attrib", "-R", str(harness_fixture)], capture_output=True)
+        _clear_fixture_readonly(harness_fixture)
         harness_fixture.chmod(0o666)
 
 
@@ -421,12 +445,12 @@ def test_readonly_target_is_reported_and_its_copies_are_normalised(harness_fixtu
 def test_clearing_readonly_restores_the_expected_operator_result(harness_fixture: Path, harness_tree: Path):
     """The causal chain, as an executable statement."""
     harness_fixture.chmod(0o444)
-    subprocess.run(["attrib", "+R", str(harness_fixture)], check=True)
+    _set_fixture_readonly(harness_fixture)
     try:
         blocked, _ = _run_probe(harness_fixture, harness_tree)
         assert blocked["identity"]["staged_target_readonly"] == "True"
     finally:
-        subprocess.run(["attrib", "-R", str(harness_fixture)], capture_output=True)
+        _clear_fixture_readonly(harness_fixture)
         harness_fixture.chmod(0o666)
 
     cleared, raw = _run_probe(harness_fixture, harness_tree)
@@ -446,7 +470,7 @@ def test_readiness_fails_if_the_fixture_is_readonly_and_never_cleared(harness_fi
     passing a run that would mislead a later subject run.
     """
     harness_fixture.chmod(0o444)
-    subprocess.run(["attrib", "+R", str(harness_fixture)], check=True)
+    _set_fixture_readonly(harness_fixture)
     try:
         if harness_fixture.stat().st_file_attributes & 0x1:
             ready = False   # the gate checks writability before running
@@ -454,7 +478,7 @@ def test_readiness_fails_if_the_fixture_is_readonly_and_never_cleared(harness_fi
             ready = True
         assert ready is False, "a ReadOnly fixture must fail the readiness gate"
     finally:
-        subprocess.run(["attrib", "-R", str(harness_fixture)], capture_output=True)
+        _clear_fixture_readonly(harness_fixture)
         harness_fixture.chmod(0o666)
 
 

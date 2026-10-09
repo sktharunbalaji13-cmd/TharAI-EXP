@@ -435,9 +435,14 @@ def test_rollback_removes_an_explicit_ace_the_snapshot_did_not_have(scratch_root
     before = _ace_structure([victim])[str(victim)]
     assert before["explicitDenyCount"] == 0
 
-    # Pin it the way the defective apply did.
-    from foundation.subject_deny import _apply_mask_to_path
-    _apply_mask_to_path(victim, SUBJECT_DENY_MASK, deny=True)
+    # Pin it the way the defective apply did. M052N: the writer now requires a governance-minted
+    # grant at its own boundary, so a legitimate disposable caller presents one.
+    from foundation.subject_deny import _apply_mask_to_path, clear_grants, register_grant
+    register_grant(victim, "_apply_mask_to_path", grant="test_pin_descendant")
+    try:
+        _apply_mask_to_path(victim, SUBJECT_DENY_MASK, deny=True)
+    finally:
+        clear_grants()
     pinned = _ace_structure([victim])[str(victim)]
     assert pinned["explicitDenyCount"] == 1, "the pin did not take effect"
 

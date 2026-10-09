@@ -239,6 +239,27 @@ $out | ConvertTo-Json -Depth 4 -Compress
     return {"error": None, "paths": data}
 
 
+#: The three descriptor writers in this module. Each is private and reachable only from an
+#: already-guarded public entry point; M052M added the assertion so that "reachable only from a
+#: guarded caller" is enforced rather than merely documented.
+_WRITERS = ("_apply_mask_to_path", "_clear_deny", "_restore_dacls")
+
+
+def _assert_writer_is_reachable_from_a_guarded_caller(root: str | Path | None = None) -> None:
+    """Backstop: refuse a writer invocation that would resolve to canonical production.
+
+    The root **must** be passed. M052N found that calling ``staging_root()`` with no argument here
+    resolved to production and so refused *every* disposable call too -- a check that fires
+    everywhere blocks nothing, and it broke nine legitimate ``subject_deny`` tests.
+
+    The authoritative production refusal is now :func:`_require_writer_grant`, which each writer
+    calls with its own real target. This function remains as a second, independent refusal at the
+    public-entry-point level, and takes the actual root.
+    """
+    from .staging import _refuse_canonical_production
+    _refuse_canonical_production(staging_root(root), "subject_deny descriptor writer")
+
+
 def subject_deny_masks(root: str | Path | None = None) -> dict[str, Any]:
     """The subject's live deny mask per path, read from the ACE structure.
 
@@ -361,6 +382,48 @@ def verify_subject_deny(root: str | Path | None = None) -> dict[str, Any]:
 # Writing the mask
 # ---------------------------------------------------------------------------
 
+def _require_writer_grant(path: Path, purpose: str) -> None:
+    """M052N writer-boundary guard, enforced **inside** every descriptor writer.
+
+    M052M's root cause: a guard existed, was named and documented, and was wired into exactly one
+    caller. A direct call stepped straight around it and production was written. A guard that lives
+    in the caller is a comment.
+
+    So the guard lives here, in the writer, before any ACL primitive is constructed. There is no
+    parameter that disables it and no caller that can satisfy it on the writer's behalf.
+
+    ``path_policy`` is imported lazily to keep this module's import graph unchanged.
+    """
+    from tests import m052n_incident as _n
+
+    resolved = Path(path).resolve()
+    # Production is refused unconditionally, on the same footing as M052K's helper.
+    _n.refuse_production(resolved, purpose)
+    # A writer also requires a grant registered by the governance layer. Without one it refuses even
+    # on a disposable tree: a mutation capability must be *presented*, not merely *reachable*.
+    # ``_GRANTS`` lives here, not in the incident module -- reading it from the wrong module raised
+    # AttributeError and made every writer look blocked, which would have been a silent failure of
+    # the guard it was meant to be.
+    if not _GRANTS.get((str(resolved), purpose)):
+        raise _n.WriterRefused(
+            f"{purpose} refused: no WriterGrant was presented for {resolved}. Writers in this "
+            f"module require a governance-minted grant; reachability is not permission.")
+
+
+#: Grants presented for a given (path, purpose). Populated by the governance layer only.
+_GRANTS: dict[tuple[str, str], object] = {}
+
+
+def register_grant(path: Path, purpose: str, grant: object) -> None:
+    """Register a governance-minted grant for one path and purpose."""
+    _GRANTS[(str(Path(path).resolve()), purpose)] = grant
+
+
+def clear_grants() -> None:
+    """Revoke every registered grant. Used between rehearsal cycles."""
+    _GRANTS.clear()
+
+
 def _apply_mask_to_path(path: Path, mask: int, *, deny: bool) -> str:
     """Write one access rule carrying ``mask`` exactly, via the DACL-only path.
 
@@ -373,7 +436,12 @@ def _apply_mask_to_path(path: Path, mask: int, *, deny: bool) -> str:
     file's deny is inherited from its directory anyway; writing it explicitly is
     what makes a pre-existing file correct without depending on propagation
     order, and the mask is identical either way.
+
+    Guarded at the writer boundary by ``_require_writer_grant`` (M052N), which runs before
+    any ACL primitive is constructed.
     """
+    _require_writer_grant(path, "_apply_mask_to_path")
+
     access = _section_name()
     kind = "Deny" if deny else "Allow"
     is_file = path.is_file()
@@ -406,6 +474,8 @@ $di.SetAccessControl($acl)
 
 
 def _clear_deny(path: Path) -> str:
+    # M052N: guard inside the writer, before any icacls argv is built.
+    _require_writer_grant(path, "_clear_deny")
     """Remove the subject's explicit deny ACEs on one path.
 
     ``icacls /remove:d`` is used rather than a native call because it is the
@@ -576,8 +646,36 @@ def apply_subject_deny(
     the snapshot and reported as a failure.
     """
     from .staging import _now
+    from .staging import _refuse_canonical_production
+
+    # M052N: register grants for every path this call will write, so the writers themselves
+    # proceed. Registering here keeps the guard inside the writers while letting this one
+    # already-governed public entry point remain usable.
+    for _p in (boundary_paths(root) + inherited_paths(root)):
+        register_grant(_p, "_apply_mask_to_path", grant="apply_subject_deny")
+        register_grant(_p, "_clear_deny", grant="apply_subject_deny")
+    try:
+        return _apply_subject_deny_inner(root, expected_before, confirm)
+    finally:
+        clear_grants()
+
+
+def _apply_subject_deny_inner(
+    root: str | Path | None = None,
+    expected_before: int | None = LEGACY_SHORTHAND_MASK,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Implementation of :func:`apply_subject_deny`, reached only through the grant registrar."""
+    from .staging import _now
+    from .staging import _refuse_canonical_production
 
     base = staging_root(root)
+    # M052M: this module carried no production guard and ``staging_root()`` defaults to canonical
+    # production, so ``apply_subject_deny(root=None, confirm=True)`` would have written the subject
+    # deny to production with no authorisation object and no interlock. Refused before ``confirm``
+    # is even considered, so no caller can reach the write by supplying it.
+    _refuse_canonical_production(base, "apply_subject_deny")
+    _assert_writer_is_reachable_from_a_guarded_caller(root)
     if not confirm:
         return {
             "schema": "babylab/m016-apply-subject-deny/v1",
@@ -819,6 +917,10 @@ def verify_rollback(snapshot: SubjectDenySnapshot) -> dict[str, Any]:
 def _restore_dacls(snapshot: SubjectDenySnapshot) -> dict[str, Any]:
     """Restore the pre-change deny mask and confirm each path landed exactly.
 
+    M052N: every path in the snapshot is guarded at this boundary, before any argv is built.
+    A restore is a mutation like any other, and it is the operation most likely to be run against
+    production by reflex.
+
     The restore mechanism is ``icacls``, not the native path used to apply, and
     that asymmetry is deliberate and measured. It exists because no single write
     path on this host is exact for both masks:
@@ -851,7 +953,29 @@ def _restore_dacls(snapshot: SubjectDenySnapshot) -> dict[str, Any]:
     # parent is restored, or the parent restore leaves the residue behind.
     ordered = sorted(snapshot.paths.items(),
                      key=lambda kv: (kv[1].get("explicit_deny_count") or 0))
+    # M052N: refuse production in full before any argv is built, so a restore aimed at production
+    # cannot be part-applied path by path. A restore is itself a governed mutation and may only
+    # run on disposable state; the caller presents no per-path grant for it, so only the
+    # production refusal applies here.
+    from .staging import _refuse_canonical_production as _rcp
+    for _p, _e in ordered:
+        _rcp(_p, "_restore_dacls")
+    # A restore legitimately drives the same writers on the same paths, so present grants for them.
+    # Without this the internal `_clear_deny` call is refused and swallowed by the per-path `try`,
+    # leaving the newly applied mask in place while restore reports a mismatch.
+    for _p, _e in ordered:
+        register_grant(_p, "_clear_deny", grant="_restore_dacls")
+    try:
+        return _restore_dacls_inner(snapshot, ordered)
+    finally:
+        clear_grants()
 
+
+def _restore_dacls_inner(snapshot: "SubjectDenySnapshot", ordered) -> dict[str, Any]:
+    """Implementation of :func:`_restore_dacls`, reached only through the grant registrar."""
+    # `restored` is read by the verification tail below, so it must exist even if the first
+    # path raises and the per-path `try` swallows it.
+    restored: list[dict[str, Any]] = []
     for path, entry in ordered:
         mask = entry.get("mask", LEGACY_SHORTHAND_MASK)
         expected_explicit = entry.get("explicit_deny_count")

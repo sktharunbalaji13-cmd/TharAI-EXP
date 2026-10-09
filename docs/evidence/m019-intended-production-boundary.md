@@ -1,5 +1,18 @@
 # M019 — Intended Production Boundary Specification
 
+> ## Amendment history
+>
+> | amendment | decision | date | sections changed | effect |
+> |---|---|---|---|---|
+> | **A1** | **D6-B** `RESCOPE_T_BABY_1_NAMESPACE` (M052E) | 2026-10-04 | **§19 added** (new); **§8 T-BABY-1 row annotated** (pointer only) | T-BABY-1's permitted **observation source** extended to a governed measurement namespace outside canonical T. **T-PATH-1, T-PATH-2, canonical T, and the security objective are unchanged.** |
+>
+> **Before A1:** `sha256 = 33dde443a6d35542f157f8027a18b6d0e68d27432d90eef082e6f3013a9139c0`, 32602 B.
+> Amendment record: `docs/evidence/m052f-m019-d6b-amendment.md`.
+> Decision record: `docs/evidence/m052e-d6-topology-contract-decision.md`.
+>
+> Sections 1–18 are the original M019 text and are preserved verbatim. A1 is **additive**: it
+> annotates one row and appends §19. No original requirement was deleted, weakened, or redefined.
+
 **M019_BOUNDARY_SPEC = PASS**
 **PRODUCTION_TOUCHED = NO**
 **OWNERSHIP_INVARIANT = ESTABLISHED**
@@ -267,7 +280,7 @@ damaged and establishes nothing.
 
 | id | capability | intended for `subject_runtime` | intended for `runtime` | intended for `model` / `config` | status |
 |---|---|---|---|---|---|
-| **T-BABY-1** | read data | yes | yes | yes | REQUIRES IMPLEMENTATION |
+| **T-BABY-1** | read data | yes | yes | yes | REQUIRES IMPLEMENTATION — observation source governed by **A1** (§19); intent columns unchanged |
 | **T-BABY-2** | read attributes / EA | yes | yes | yes | REQUIRES IMPLEMENTATION |
 | **T-BABY-3** | list directory | yes | yes | yes | REQUIRES IMPLEMENTATION |
 | **T-BABY-4** | traverse | yes | yes | yes | ESTABLISHED semantically (§5) |
@@ -547,3 +560,160 @@ MECHANISM_SELECTED   = NO
 
 M020 — approval of T, or the verifier and mask decisions it depends on — is **not**
 begun and is not authorized here.
+
+---
+
+## 19. Amendment A1 (D6-B) — T-BABY-1 observation namespace
+
+**A1_STATUS = RECORDED — GOVERNANCE ONLY, NO MEASUREMENT PERFORMED**
+
+This amendment exists because **T-BABY-1 and T-PATH-2 are jointly unsatisfiable on the current
+topology**, and no amount of measurement can fix that. T-BABY-1 requires an object the subject can
+read; T-PATH-2 forbids every test artefact from being inside the target path set; the only files
+present under `runtime\` are `m016_*` fixtures. M052B therefore measured T-BABY-1 against an object
+that was simultaneously a valid read-access observation and a T-PATH-2 violation.
+
+M052D classified this as a **property-contract contradiction, not an instrumentation problem**.
+M052E recorded the director's selection of **D6-B**. A1 is the governed documentation amendment that
+D6-B requires.
+
+### 19.1 What A1 does and does not change
+
+| | |
+|---|---|
+| **Canonical T** | **UNCHANGED** — `subject_runtime`, `runtime`, `model`, `config`, and only those (§11) |
+| **T-PATH-1** | **UNCHANGED** |
+| **T-PATH-2** | **UNCHANGED** — still a prohibition on test artefacts inside T |
+| **T-OWN-*** | **UNCHANGED** |
+| **T-TRAV-*** | **UNCHANGED** |
+| **T-WR-1…11** | **UNCHANGED** |
+| **Security objective** (§10 deny-set derivation) | **UNCHANGED** — see §19.7 |
+| **T-BABY-1 requirement** | **UNCHANGED** — still *"read data"*, state `allowed`, evidence `OS measurement` |
+| **T-BABY-1 observation source** | **EXTENDED** — may be sourced from a governed measurement namespace outside T |
+
+A1 changes **where T-BABY-1's read observation may be sourced**. It changes **nothing** about what
+T-BABY-1 requires, and it changes **no other property**.
+
+### 19.2 Why the source had to change
+
+Under §11 and T-PATH-2 there is exactly one compliant observation source for T-BABY-1, and it does
+not currently exist:
+
+* authoring content into canonical `subject_runtime` was **D6-A**, rejected — it is a production
+  mutation and would leave T-PATH-2 unmet anyway;
+* amending §11 to admit fixtures was **D6-C**, rejected — it converts a prohibition into a
+  permission and would let T-PATH-2 be satisfied by definition rather than by measurement;
+* **D6-B** was selected: source the observation from outside T, under explicit governance.
+
+### 19.3 The governed measurement namespace — defined, NOT created
+
+A1 defines the concept. **No namespace path is chosen and no namespace is created by this
+amendment.** Naming a concrete production path here would convert a governance decision into an
+implementation, and would place a new artefact class adjacent to the frozen boundary before its
+governance is settled.
+
+**Identifier.** `T_OBSERVATION_NAMESPACE` — a governed identifier, not a path. A concrete location
+requires its own implementation milestone with the same freeze-and-rehearse discipline as M052B,
+and is deliberately left open.
+
+| requirement | rule |
+|---|---|
+| **Location** | Outside canonical T. Not inside `subject_runtime`, `runtime`, `model` or `config`. Not a path fixed by A1. |
+| **Ownership** | Owned by the **laboratory/operator**, never by `BABY_AI_TEST`. The subject does not own a namespace it may read; ownership follows the §7 same-SID and principal-wide prohibitions. |
+| **Provenance** | Every observation object must carry: experiment identifier; creation provenance; content hash; author/source classification; immutable association with the measurement it serves. |
+| **Mutability** | The subject gains **no** write, append, delete, `WRITE_DAC`, `WRITE_OWNER`, `WRITE_EA` or `FILE_WRITE_ATTRIBUTES` rights by the namespace existing. It is a **measurement input, not a subject workspace.** |
+| **Separation** | Observation objects must not be conflated with subject memory, subject experience, canonical subject state, model weights, runtime code, or provenance evidence. |
+| **Fixtures** | Disposable test fixtures remain disposable test fixtures. They are **not** promoted to canonical or governed-legitimate status by the existence of a namespace. |
+
+### 19.4 The six categories A1 keeps distinct
+
+The contradiction arose from two categories being blurred. A1 separates them explicitly, and no
+category may be silently reclassified as another:
+
+| # | category | may serve as T-BABY-1 observation source? |
+|---|---|---|
+| 1 | **canonical subject state** | yes — it is inside T, and T-PATH-2 keeps it free of artefacts |
+| 2 | **environment/content supplied for legitimate observation** | yes, **only** via `T_OBSERVATION_NAMESPACE` and only under §19.3 provenance |
+| 3 | **research instrumentation** | no — an instrument is the thing that *performs* the observation |
+| 4 | **disposable test fixtures** | **no** — remains prohibited inside T by T-PATH-2 |
+| 5 | **subject-generated content** | no — is evidence of the subject, never an input to it |
+| 6 | **provenance/evidence artifacts** | no — evidence of a measurement, never its subject |
+
+### 19.5 Historical M052B treatment — immutable
+
+M052B is **not** rewritten, reclassified, or invalidated.
+
+```
+M052B measured : read access (0x0001) to runtime/m016_read_fixture.exe
+target location: INSIDE canonical subject_runtime
+target status  : a T-PATH-2 VIOLATION (an m016_* test fixture)
+result         : ALLOWED, bytes_read = 25
+```
+
+What follows from that, and only that:
+
+* the **access observation is valid historical experimental evidence** — an externally identified
+  `BABY_AI_TEST` token obtained `FILE_READ_DATA` on an existing object, observed by an OS-level
+  measurement, exactly as M019 requires;
+* it was **not obtained under `T_OBSERVATION_NAMESPACE`**, which did not exist;
+* M052B is therefore **not retroactively transformed into a compliant D6-B experiment**;
+* consequently it does **not** discharge T-BABY-1 under A1.
+
+```
+T-BABY-1 (post-A1) = REQUIRES_FRESH_MEASUREMENT
+```
+
+This is a statement about **evidential provenance**, not a retraction. Nothing about what the subject
+did in attempt `e978330eb5e746c0` is in dispute; only whether that attempt used a compliant
+observation source. It did not.
+
+### 19.6 What A1 makes possible, and what it does not
+
+```
+D6-B decision (M052E)
+  -> A1 amendment (M052F)                      [THIS MILESTONE]
+     -> T_OBSERVATION_NAMESPACE implementation  [NOT DONE — later milestone]
+        -> fresh T-BABY-1 measurement          [NOT DONE — later milestone]
+           -> T-BABY-1 adjudication            [NOT DONE — later milestone]
+```
+
+**A definition change makes a property MEASURABLE. It does not perform the measurement.** T-BABY-1
+is not satisfied by this amendment and cannot be reported as satisfied until a fresh compliant
+observation exists.
+
+### 19.7 Security objective — explicitly unchanged
+
+A1 alters **none** of: the required deny rights (`T_SUBJECT_DENIED_RIGHTS`, 8 rights); the
+effective-access interpretation; the subject boundary; the operator boundary; `WRITE_DAC`
+requirements; `WRITE_OWNER` requirements; ownership requirements.
+
+The security objective remains **NOT SATISFIED** on current production, with **5 of 8** required
+denials absent (`FILE_WRITE_DATA`, `FILE_APPEND_DATA`, `FILE_WRITE_EA`, `FILE_WRITE_ATTRIBUTES`,
+`DELETE` present; `FILE_DELETE_CHILD`, `WRITE_DAC`, `WRITE_OWNER` absent). That is a D3 matter.
+D3 remains an independent, unresolved decision and is **not** advanced, derived, or implemented here.
+
+### 19.8 What A1 explicitly does not do
+
+* It does **not** legitimise the three `m016_*` artefacts. They remain **T-PATH-2 violations** until
+  a separate remediation decision (M052D D1) permits their removal.
+* It does **not** create, populate, or grant access to any namespace.
+* It does **not** grant the subject any new right.
+* It does **not** select or implement a deny mask.
+* It does **not** launch a subject, run a measurement, or alter any prior evidence record.
+* It does **not** introduce a *"protected data"* predicate. T-BABY-1 remains *"read data"*.
+
+### 19.9 Amendment A1 acceptance criteria
+
+| criterion | result |
+|---|---|
+| All 36 T properties still present, none deleted, none duplicated | PASS |
+| T-PATH-2 text unchanged | PASS |
+| T-BABY-1 requirement text and state unchanged | PASS |
+| Canonical T text unchanged | PASS |
+| Security objective unchanged | PASS |
+| Prior sections 1–18 preserved verbatim | PASS |
+| M052B evidence byte-identical | PASS |
+| M052C / M052D / M052E records intact | PASS |
+| Namespace **defined, not created** | PASS |
+| `m016_*` still classified as violations | PASS |
+| No subject launched, no authorisation requested | PASS |

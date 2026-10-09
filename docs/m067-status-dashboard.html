@@ -1,0 +1,178 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Baby AI Project Status Dashboard (M067)</title><style>
+body{font-family:system-ui,Segoe UI,Arial,sans-serif;margin:2em;max-width:1100px;color:#1a1a1a}
+h1{font-size:1.6em} h2{margin-top:2em;border-bottom:2px solid #333;padding-bottom:.2em}
+table{border-collapse:collapse;width:100%;font-size:.85em;margin:.5em 0}
+th,td{border:1px solid #bbb;padding:.35em .5em;text-align:left;vertical-align:top}
+th{background:#eee}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.6em;margin:.5em 0}
+.tile{border:2px solid #666;border-radius:6px;padding:.6em}
+.st-COMPLETE,.st-HEALTHY,.st-CLOSED,.st-FROZEN,.st-PASS{background:#dff0d8;border-color:#3c763d}
+.st-PARTIAL,.st-HOLD-ACTIVE,.st-BLOCKED,.st-MITIGATED{background:#fcf8e3;border-color:#8a6d3b}
+.st-MISSING,.st-OPEN,.st-NONE,.st-FAIL{background:#f2dede;border-color:#a94442}
+.st-EVIDENCED,.st-UNKNOWN,.st-SPECIFICATION{background:#e8e8e8;border-color:#666}
+.bar{background:#ddd;height:1em;border-radius:3px}.bar>i{display:block;background:#3c763d;height:1em;border-radius:3px}
+.small{font-size:.8em;color:#555}.legend{font-size:.85em}
+code{font-size:.85em}
+</style></head><body>
+<h1>Baby AI Project Status Dashboard</h1>
+<p>Evidence date: <b>2026-10-09</b> · GIT_HEAD: <code>6766c5b1b4e67d7dfbc21d6e87b75ce019a7c555</code> · Ledger: <b>18 entries, head PROV-000018, sealed</b> · Read-only status artifact: this page asserts nothing, authorizes nothing, and changes nothing.</p>
+<h2>Live-verified headline state</h2><table><tr><th>Fact</th><th>Live value</th></tr>
+<tr><td>ledger_entries</td><td><code>18</code></td></tr>
+<tr><td>ledger_head</td><td><code>PROV-000018</code></td></tr>
+<tr><td>chain_intact</td><td><code>True</code></td></tr>
+<tr><td>seal_intact</td><td><code>True</code></td></tr>
+<tr><td>gate_1</td><td><code>CLOSED</code></td></tr>
+<tr><td>gate_2_open</td><td><code>False</code></td></tr>
+<tr><td>explog_drift</td><td><code>07efda7adb6ee30f</code></td></tr>
+<tr><td>m064_sha</td><td><code>e2a3939e77a55200</code></td></tr>
+<tr><td>runtime_selection</td><td><code>False</code></td></tr>
+<tr><td>model_deployment</td><td><code>False</code></td></tr>
+<tr><td>birth_record</td><td><code>False</code></td></tr>
+<tr><td>production_descriptor</td><td><code>d63ff646bec494c198db9031491558f2744ea40bb2b1af016090e980865c1f27</code></td></tr>
+<tr><td>production_content</td><td><code>55250a71209a4d397dc51f3f12da105455a5d20ace53062416d26079fded0cdf</code></td></tr>
+</table>
+<h2>Progress by track (exact fractions; no blended percent asserted)</h2>
+<p class="small">Rules: categorical milestones only; HOLD counts as complete (hold fulfilled its purpose); specifications excluded from implementation counts; tests never count as authorization; readiness never counts as operation.</p>
+<table><tr><th>Track</th><th>Scope</th><th>Progress</th></tr>
+<tr><td>Recovery governance &amp; execution</td><td class="small">M052J–M057 + M054B (decision iterations counted once as M052Q–Y)</td><td><div class="bar"><i style="width:100%"></i></div>15/15</td></tr>
+<tr><td>Post-recovery review &amp; reconciliation</td><td class="small">M058–M061</td><td><div class="bar"><i style="width:100%"></i></div>4/4</td></tr>
+<tr><td>Developmental governance &amp; safety</td><td class="small">M062–M067</td><td><div class="bar"><i style="width:83%"></i></div>5/6</td></tr>
+</table>
+<h2>Workstream map (tile size carries no weight)</h2><div class="tiles">
+<div class="tile st-COMPLETE"><b>Recovery governance &amp; execution</b><br>COMPLETE<br><span class="small">M057 poststate exact; incident closed with audit items · as of 2026-10-09</span></div>
+<div class="tile st-COMPLETE"><b>Post-recovery reconciliation</b><br>COMPLETE<br><span class="small">M060 dual-mode; live post-recovery PASS · as of 2026-10-09</span></div>
+<div class="tile st-HEALTHY"><b>Provenance &amp; seals</b><br>HEALTHY (known drift)<br><span class="small">17 entries intact, head PROV-000018 sealed; exp-log drift accepted (Option A) · as of 2026-10-09</span></div>
+<div class="tile st-PARTIAL"><b>Isolation &amp; boundaries</b><br>PARTIAL<br><span class="small">Tier 1/2 partial; Tier 3 absent; F1 fixed M066; FILE_DELETE_CHILD open · as of 2026-10-09</span></div>
+<div class="tile st-PARTIAL"><b>Foundation / model / runtime</b><br>PARTIAL<br><span class="small">machinery real; no artifacts selected, nothing staged · as of 2026-10-09</span></div>
+<div class="tile st-PARTIAL"><b>Birth &amp; lifecycle</b><br>PARTIAL<br><span class="small">machinery complete; BLOCKED (no declaration); no birth · as of 2026-10-09</span></div>
+<div class="tile st-BLOCKED"><b>Launch &amp; sessions</b><br>BLOCKED<br><span class="small">holds active; no auth; no session; NOT_TESTABLE unattended · as of 2026-10-09</span></div>
+<div class="tile st-PARTIAL"><b>Observatory &amp; telemetry</b><br>PARTIAL<br><span class="small">read-only pipeline; bans enforced; no INTERPRETATION/HYPOTHESIS split · as of 2026-10-09</span></div>
+<div class="tile st-COMPLETE"><b>Developmental governance</b><br>COMPLETE<br><span class="small">M064 sealed; implementation deferred; F1 remediated · as of 2026-10-09</span></div>
+<div class="tile st-PARTIAL"><b>Human control &amp; security posture</b><br>PARTIAL<br><span class="small">separation by design; HMAC/Tier-3/contract caveats carried · as of 2026-10-09</span></div>
+</div>
+<p class="legend small">Legend: green = complete/healthy/closed/frozen/pass; amber = partial/hold-active/blocked/mitigated (attention, not failure); red = missing/open/fail; gray = evidenced-not-reverified / unknown / specification. FAIL on incident-state checks after recovery means 'incident absent', not failure.</p>
+<h2>Gates (independent of progress)</h2><table><tr><th>Gate</th><th>State</th><th>Basis</th></tr>
+<tr><td>D3 Gate 1 (production mutation)</td><td class="st-CLOSED">CLOSED</td><td class="small">no valid ProductionAuthorisation exists</td></tr>
+<tr><td>Gate 2 (production capability)</td><td class="st-CLOSED">CLOSED</td><td class="small">no GovernanceDecision; in-memory, fresh-process closed</td></tr>
+<tr><td>Birth gates (M009/M013)</td><td class="st-BLOCKED">BLOCKED</td><td class="small">no declaration; MODEL_NOT_CONFIGURED</td></tr>
+<tr><td>Launch interlocks</td><td class="st-BLOCKED">BLOCKED</td><td class="small">no selection; holds; no session</td></tr>
+<tr><td>Lifecycle</td><td class="st-UNCREATED">UNCREATED</td><td class="small">no BIRTH.json</td></tr>
+<tr><td>A/B/C policy</td><td class="st-NONE">NONE</td><td class="small">no decision</td></tr>
+<tr><td>Network</td><td class="st-UNKNOWN">NO NETWORK (loopback pending final policy)</td><td class="small">D7 open</td></tr>
+</table><h2>Authorizations (independent of tests)</h2><table><tr><th>Authorization</th><th>State</th><th>Note</th></tr>
+<tr><td>M054 R1 governance</td><td>FROZEN (PROV-000015)</td><td class="small">classification only; authorises no recovery</td></tr>
+<tr><td>M056 recovery auth 990c6e6f…</td><td>SPENT (PROV-000016)</td><td class="small">consumed by M057; module self-neutralized</td></tr>
+<tr><td>M057 execution</td><td>CONSUMED (PROV-000017)</td><td class="small">one verified ACE removal; poststate exact</td></tr>
+<tr><td>M064 boundary decision</td><td>RECORDED (PROV-000018)</td><td class="small">architecture only; grants nothing</td></tr>
+<tr><td>M031/M052Z/M053 holds</td><td>ACTIVE</td><td class="small">launch/recovery/D3 BLOCKED by design</td></tr>
+<tr><td>Launch authorization</td><td>NONE</td><td class="small">prior auths spent; fresh verbatim words required</td></tr>
+<tr><td>Birth authorization</td><td>NONE</td><td class="small">no declaration; M014 BLOCKED</td></tr>
+<tr><td>A/B/C decision</td><td>NONE</td><td class="small">ordinary-mutation Gate-2 track untouched</td></tr>
+</table><h2>Milestones M001–M067</h2><table><tr><th>ID</th><th>Title</th><th>Status</th><th>Basis</th><th>Re-verified M067</th></tr>
+<tr><td>M001</td><td>Laboratory instrumentation</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">ledger MILESTONE-001 entries (5) + experiment log</td><td>basis only</td></tr>
+<tr><td>M002</td><td>Cognitive State Observatory</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">ledger MILESTONE-002 entries (4) + observatory code</td><td>basis only</td></tr>
+<tr><td>M003</td><td>Birth ceremony / model identity / truthful display</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">ledger MILESTONE-003 entries (3)</td><td>basis only</td></tr>
+<tr><td>M004</td><td>Trust boundary architecture</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/m004-trust-boundary.md</td><td>basis only</td></tr>
+<tr><td>M005</td><td>OS isolation (Tier 2 verified by human probes)</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">m005-final-verification.json (2/11 probed; residuals noted)</td><td>basis only</td></tr>
+<tr><td>M006</td><td>Foundation-model and runtime layer</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m006 doc era</td><td>basis only</td></tr>
+<tr><td>M007</td><td>Environment and interaction substrate</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/m007-environment.md</td><td>basis only</td></tr>
+<tr><td>M008</td><td>Subject architecture boundary</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/m008-subject.md</td><td>basis only</td></tr>
+<tr><td>M009</td><td>Birth ceremony + controlled experience</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">birth/ceremony.py gate BLOCKED absent model</td><td>basis only</td></tr>
+<tr><td>M010</td><td>Foundation acquisition/verification</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs evidence era</td><td>basis only</td></tr>
+<tr><td>M011</td><td>Real runtime + subject-account execution</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs evidence era</td><td>basis only</td></tr>
+<tr><td>M012</td><td>Foundation deployment verification</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">m012-deployment-verification.json BLOCKED/NOT_CONFIGURED</td><td>basis only</td></tr>
+<tr><td>M013</td><td>Real birth ceremony / first experience</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">birth gate13/ceremony13 machinery, no birth</td><td>basis only</td></tr>
+<tr><td>M014</td><td>First real birth</td><td class="st-BLOCKED">BLOCKED</td><td class="small">no model_deployment.json; M014 real result BLOCKED (verified absent 2026-10-09)</td><td>YES</td></tr>
+<tr><td>M015</td><td>Subject-runtime staging boundary</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">staging design; nothing staged (verified 2026-10-09)</td><td>YES</td></tr>
+<tr><td>M016</td><td>Subject-account runtime launch feasibility</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">BABY_AI_TEST verified; launch NOT_TESTABLE</td><td>basis only</td></tr>
+<tr><td>M017</td><td>Security objective decision</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m017 doc</td><td>basis only</td></tr>
+<tr><td>M018</td><td>Canonical state reconstruction</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m018 doc</td><td>basis only</td></tr>
+<tr><td>M019</td><td>Intended production boundary</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m019 doc</td><td>basis only</td></tr>
+<tr><td>M020</td><td>Security boundary verifier</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m020 doc</td><td>basis only</td></tr>
+<tr><td>M021</td><td>Boundary implementation design (T/MASK unselected)</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m021 doc</td><td>basis only</td></tr>
+<tr><td>M022</td><td>Repository state reconciliation</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m022 doc</td><td>basis only</td></tr>
+<tr><td>M023</td><td>Harness mutation-surface closure</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m023 doc</td><td>basis only</td></tr>
+<tr><td>M024</td><td>Complete mutation-surface closure</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m024 doc</td><td>basis only</td></tr>
+<tr><td>M025</td><td>Subject test-fixture resolution</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m025 doc</td><td>basis only</td></tr>
+<tr><td>M026</td><td>Disposable deployment readiness (INCOMPLETE: unmeasured)</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m026 doc</td><td>basis only</td></tr>
+<tr><td>M027</td><td>Interactive enforcement measurement (NOT_ATTEMPTED)</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m027 doc</td><td>basis only</td></tr>
+<tr><td>M028</td><td>Adjudicator + measurement readiness</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m028 doc</td><td>basis only</td></tr>
+<tr><td>M029</td><td>Human-gated measurement decision</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m029 doc</td><td>basis only</td></tr>
+<tr><td>M030</td><td>Interactive subject measurement</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m030 doc</td><td>basis only</td></tr>
+<tr><td>M031</td><td>Experimental hold / human-session handoff</td><td class="st-HOLD-ACTIVE">HOLD-ACTIVE</td><td class="small">hold doc; AUTOMATED_SUBJECT_LAUNCH NOT_AVAILABLE</td><td>basis only</td></tr>
+<tr><td>M032</td><td>Disposable session target reconciliation</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m032 doc</td><td>basis only</td></tr>
+<tr><td>M033</td><td>Baby-AI test session path investigation</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m033 doc</td><td>basis only</td></tr>
+<tr><td>M034</td><td>Cached subject-credential disposition</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m034 doc</td><td>basis only</td></tr>
+<tr><td>M035</td><td>Cached credential removal</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m035 doc</td><td>basis only</td></tr>
+<tr><td>M036</td><td>Cached credential deletion root cause</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m036 doc</td><td>basis only</td></tr>
+<tr><td>M037</td><td>Interactive session readiness</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m037 doc</td><td>basis only</td></tr>
+<tr><td>M038</td><td>First interactive launch analysis</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m038 doc</td><td>basis only</td></tr>
+<tr><td>M039</td><td>Instrument launcher contract remediation</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m039 doc</td><td>basis only</td></tr>
+<tr><td>M040A</td><td>Launch selection reconciliation</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m040a doc</td><td>basis only</td></tr>
+<tr><td>M040B</td><td>Launcher privilege capture</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m040b doc</td><td>basis only</td></tr>
+<tr><td>M040C</td><td>Two-launch-attempt reconciliation</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m040c doc</td><td>basis only</td></tr>
+<tr><td>M041</td><td>Handoff access-contract decision</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m041 doc</td><td>basis only</td></tr>
+<tr><td>M042</td><td>Trusted writer handoff design</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m042 doc</td><td>basis only</td></tr>
+<tr><td>M043</td><td>Live trusted-writer connection gate</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m043 doc</td><td>basis only</td></tr>
+<tr><td>M044</td><td>Live trusted-writer attempt</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m044 doc</td><td>basis only</td></tr>
+<tr><td>M045</td><td>Human live trusted-writer attempt</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m045 doc</td><td>basis only</td></tr>
+<tr><td>M046</td><td>Live experiment (+result)</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m046 docs</td><td>basis only</td></tr>
+<tr><td>M047</td><td>Live trusted-writer adjudication</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m047 doc</td><td>basis only</td></tr>
+<tr><td>M048</td><td>External token observation strategy</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m048 doc</td><td>basis only</td></tr>
+<tr><td>M049</td><td>Strategy-A authorization gate</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m049 doc</td><td>basis only</td></tr>
+<tr><td>M050</td><td>Live token observation gate (+result)</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m050 docs</td><td>basis only</td></tr>
+<tr><td>M051</td><td>Subject-side enforcement measurement design</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m051 doc</td><td>basis only</td></tr>
+<tr><td>M052</td><td>Live launcher freeze + read-only measurement gate</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">m052 freeze docs; auths spent</td><td>basis only</td></tr>
+<tr><td>M052A</td><td>Read-only instrument build + rehearsal</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m052a doc</td><td>basis only</td></tr>
+<tr><td>M052B</td><td>Live adjudication + production target mapping</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m052b docs</td><td>basis only</td></tr>
+<tr><td>M052C</td><td>M019 property adjudication</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m052c doc</td><td>basis only</td></tr>
+<tr><td>M052D</td><td>Canonical topology decision gate</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m052d doc</td><td>basis only</td></tr>
+<tr><td>M052E</td><td>D6 topology contract decision</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m052e doc</td><td>basis only</td></tr>
+<tr><td>M052F</td><td>M019 D6B amendment</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m052f doc</td><td>basis only</td></tr>
+<tr><td>M052G</td><td>Observation namespace implementation</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m052g doc</td><td>basis only</td></tr>
+<tr><td>M052H</td><td>T-BABY-1 preflight + live adjudication</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m052h docs</td><td>basis only</td></tr>
+<tr><td>M052I</td><td>Post-M052H governance reconciliation</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m052i doc</td><td>basis only</td></tr>
+<tr><td>M052J</td><td>D3 deny-mask decision (0x000D0156)</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m052j doc</td><td>basis only</td></tr>
+<tr><td>M052K</td><td>D3 implementation (frozen mechanism, gates closed)</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">m052k module; no production write path</td><td>basis only</td></tr>
+<tr><td>M052L</td><td>Interlock governance (Gate 2 mechanism, unopened)</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">m052l module; evaluate() never permits write</td><td>basis only</td></tr>
+<tr><td>M052M</td><td>Accidental production ACE incident (governance readiness)</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">incident docs; ACE removed by M057</td><td>basis only</td></tr>
+<tr><td>M052N</td><td>Incident exactness proof (disposable)</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">m052n module + tests</td><td>basis only</td></tr>
+<tr><td>M052O</td><td>Recovery authorisation architecture + disposable proof</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">m052o module; 21-case matrix</td><td>basis only</td></tr>
+<tr><td>M052P</td><td>Recovery governance gate (40-case matrix, decision NONE)</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">m052p module + matrix</td><td>basis only</td></tr>
+<tr><td>M052Q–Y</td><td>Recovery-governance decision iterations</td><td class="st-EVIDENCED">EVIDENCED</td><td class="small">docs/evidence/m052q–y docs</td><td>basis only</td></tr>
+<tr><td>M052Z</td><td>Director decision hold</td><td class="st-HOLD-ACTIVE">HOLD-ACTIVE</td><td class="small">hold module; launch/recovery/D3 BLOCKED</td><td>basis only</td></tr>
+<tr><td>M053</td><td>Governance hold finalization</td><td class="st-HOLD-ACTIVE">HOLD-ACTIVE</td><td class="small">hold module; holds active</td><td>basis only</td></tr>
+<tr><td>M054</td><td>R1 governance frozen (HUMAN seal PROV-000015)</td><td class="st-COMPLETE">COMPLETE</td><td class="small">canonical digest 0b7148e0… verified live 2026-10-09; ledger+seal</td><td>YES</td></tr>
+<tr><td>M054B</td><td>Provenance discrepancy adjudication (pre-existing)</td><td class="st-COMPLETE">COMPLETE</td><td class="small">evidence doc; drift confirmed pre-M054</td><td>YES</td></tr>
+<tr><td>M055</td><td>Recovery authorisation design (unsigned draft)</td><td class="st-COMPLETE">COMPLETE</td><td class="small">session report; gaps documented, none repaired</td><td>YES</td></tr>
+<tr><td>M056</td><td>Recovery authorisation issued (HUMAN seal PROV-000016)</td><td class="st-COMPLETE">COMPLETE</td><td class="small">canonical 4d5c64e5… verified live 2026-10-09; ledger+seal</td><td>YES</td></tr>
+<tr><td>M057</td><td>Recovery executed + verified (one exact ACE removal)</td><td class="st-COMPLETE">COMPLETE</td><td class="small">poststate d63ff646… verified live 2026-10-09; PROV-000017</td><td>YES</td></tr>
+<tr><td>M058</td><td>Post-recovery security review (module CLASS A)</td><td class="st-COMPLETE">COMPLETE</td><td class="small">session report; read-only</td><td>YES</td></tr>
+<tr><td>M059</td><td>Developmental readiness review</td><td class="st-COMPLETE">COMPLETE</td><td class="small">session report; read-only</td><td>YES</td></tr>
+<tr><td>M060</td><td>Reconciliation versioned (incident vs post-recovery)</td><td class="st-COMPLETE">COMPLETE</td><td class="small">m060 module+tests; live PASS verified 2026-10-09</td><td>YES</td></tr>
+<tr><td>M061</td><td>Experiment-log drift disposition (Option A accepted)</td><td class="st-COMPLETE">COMPLETE</td><td class="small">session report + human disposition; file untouched</td><td>YES</td></tr>
+<tr><td>M062</td><td>Gate-1 preparation package (D3-scoped finding)</td><td class="st-COMPLETE">COMPLETE</td><td class="small">session report; no files changed</td><td>YES</td></tr>
+<tr><td>M063</td><td>Developmental gate architecture (no implementation)</td><td class="st-COMPLETE">COMPLETE</td><td class="small">session report; SPECIFICATION row, not implementation</td><td>YES</td></tr>
+<tr><td>M064</td><td>Developmental boundary decided (Option C, sealed)</td><td class="st-COMPLETE">COMPLETE</td><td class="small">canonical e2a3939e… verified live 2026-10-09; PROV-000018</td><td>YES</td></tr>
+<tr><td>M065</td><td>Implementation-preparation contract (F1 BLOCKING found)</td><td class="st-COMPLETE">COMPLETE</td><td class="small">session report; SPECIFICATION row</td><td>YES</td></tr>
+<tr><td>M066</td><td>F1 staging/recovery remediation (verified)</td><td class="st-COMPLETE">COMPLETE</td><td class="small">staging.py guards + 10/10 tests; production unchanged</td><td>YES</td></tr>
+<tr><td>M067</td><td>Status dashboard (this milestone)</td><td class="st-OPEN">OPEN</td><td class="small">in progress; completes on accepted report</td><td>YES</td></tr>
+</table><h2>Open human decisions</h2><table><tr><th>Decision</th><th>Needed before</th></tr>
+<tr><td>Tier 3 mandate vs accepted risk</td><td>before launch</td></tr>
+<tr><td>Tier-2 credit vs fresh full-coverage proof</td><td>before birth-execution/launch per human call</td></tr>
+<tr><td>FILE_DELETE_CHILD close vs accept</td><td>before launch</td></tr>
+<tr><td>Staging immutability demonstration timing</td><td>human call</td></tr>
+<tr><td>Final network policy</td><td>before any launch</td></tr>
+<tr><td>Model + runtime selection</td><td>separate human milestone</td></tr>
+<tr><td>Birth authorization</td><td>after implementation + evidence</td></tr>
+<tr><td>Launch authorization</td><td>after birth + fresh verbatim words</td></tr>
+</table><h2>Risks</h2><table><tr><th>Risk</th><th>State</th><th>Note</th></tr>
+<tr><td>F1 staging defaults</td><td>CLOSED (M066)</td><td class="small">guards + 10/10 tests; production unchanged</td></tr>
+<tr><td>Misconfigured launch as operator</td><td>OPEN</td><td class="small">Tier 3 absent; privilege/session path undecided</td></tr>
+<tr><td>Reconcile 02/05/09 misread as failure</td><td>MITIGATED</td><td class="small">M060 dual-mode + this dashboard&#x27;s legend</td></tr>
+<tr><td>Single-operator HMAC provenance limits</td><td>ACCEPTED (documented)</td><td class="small">ADR-003; third-party verification blocked</td></tr>
+<tr><td>Undiscovered writer outside scan patterns</td><td>UNKNOWN (bounded)</td><td class="small">M062/M066 scans; novel primitives uncovered</td></tr>
+</table><h2>Next recommended milestone</h2>
+<p><b>M068</b> — Human review: accept M066 F1 remediation; scope D6/D7/model-runtime decisions for birth-boundary implementation (recommendation only; no authorization)</p>
+<h2>Methods &amp; limitations</h2><p class="small">Headline facts re-verified live via ledger verify + seal check, gate reads, file hashing, and existence checks on 2026-10-09. Earlier milestones marked EVIDENCED carry their own evidence docs' claims, not fresh M067 verification. No blended completion percentage is asserted; the prior informal forty-percent figure is not used. This page is static HTML with no scripts and no external resources; it cannot authorize, launch, mutate, or seal anything.</p>
+</body></html>

@@ -981,12 +981,12 @@ def verify_topology(
         "the target set holds only the declared paths" if not topology.extras
         else f"{len(topology.extras)} path(s) inside the target set were never "
              "declared: " + ", ".join(topology.extras),
-        "descriptor", unexpected=list(topology.extras)))
+        "descriptor", observed={"unexpected": list(topology.extras)}))
     topology.set_checks.append(PropertyCheck(
         "no_fixture_artifacts_in_target_set", "FAIL" if debris else "PASS",
         "no M016 fixture artifact is inside the target set" if not debris
         else "fixture artifacts present in the target set: " + ", ".join(debris),
-        "descriptor", artifacts=debris))
+        "descriptor", observed={"artifacts": debris}))
     return topology
 
 

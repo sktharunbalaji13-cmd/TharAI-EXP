@@ -107,6 +107,81 @@ def staging_root(root: str | Path | None = None) -> Path:
     return Path(root) / STAGING_DIRNAME
 
 
+#: Canonical production, resolved once. ``staging_root()`` with no argument resolves to exactly this
+#: path, which is the entire hazard: a mutating caller that trusts the default reaches production.
+_CANONICAL_T = Path(__file__).resolve().parent.parent / STAGING_DIRNAME
+
+
+class CanonicalProductionMutation(RuntimeError):
+    """Raised when a staging helper is asked to mutate canonical production."""
+
+
+#: Read-only icacls/PowerShell verbs. A function using only these cannot change a descriptor, so
+#: requiring a mutation guard of it would be theatre -- and M052M's inventory nearly misclassified
+#: three read-only helpers as UNSAFE for exactly that reason.
+READ_ONLY_ICACLS = frozenset({"", "icacls", "powershell", "-NoProfile", "-NonInteractive",
+                              "-Command", "/T", "/C", "Get-Acl", "Get-Item", "Select-Object",
+                              "(Get-Acl", "-ExpandProperty", "Owner"})
+
+
+def is_read_only_mutation_syntax(body: str) -> bool:
+    """True when a function body contains only read verbs.
+
+    Conservative: anything unrecognised counts as a write, so this can only ever under-classify a
+    read as a write, never the reverse.
+    """
+    import re as _re
+    argv_like = _re.findall(r"_run\(\[(.*?)\]", body, _re.S) + _re.findall(
+        r"subprocess\.run\(\s*\[(.*?)\]", body, _re.S)
+    if not argv_like:
+        # No argv: look for descriptor-writing APIs, which are always writes.
+        return not any(a in body for a in ("SetAccessControl", "AddAccessRule", "SetAccessRule",
+                                           "RemoveAccessRule", "SetOwner",
+                                           "SetAccessRuleProtection"))
+    for argv in argv_like:
+        for token in _re.findall(r'"([^"]*)"', argv) + _re.findall(r"'([^']*)'", argv):
+            token = token.strip()
+            if token in READ_ONLY_ICACLS:
+                continue
+            if token.startswith("/") and token not in ("/T", "/C"):
+                return False           # /grant /deny /remove /inheritance:* /setowner /reset ...
+            if token.startswith("Set-") or "SetAccessControl" in token:
+                return False
+        if "-Command" in argv:
+            script = " ".join(_re.findall(r'"([^"]*)"', argv))
+            if any(w in script for w in ("SetAccessControl", "AddAccessRule", "SetAccessRule",
+                                         "RemoveAccessRule", "SetOwner", "icacls /")):
+                return False
+    return True
+
+
+def _refuse_canonical_production(base: str | Path, what: str) -> Path:
+    """Refuse to mutate canonical production. Added in M052M.
+
+    ``staging_root()`` defaults to ``<repo>/subject_runtime``, which **is** canonical production, and
+    this module carried no guard at all. So ``apply_boundary()`` called with no arguments would have
+    run ``icacls /inheritance:r /T /C`` recursively over production and then applied the subject deny
+    to it -- with no authorisation object, no interlock, and no M052K mechanism.
+
+    The block is deliberately narrow: reads (``verify_boundary``, ``staging_inventory``, ``acl_of``)
+    are unaffected, because production reads are permitted by policy and are how the objective is
+    measured at all. Only *mutation* is refused, and only for this one path.
+
+    Remediation of production is a separate, explicitly authorised mutation under the M052K
+    mechanism. This function exists so that no other caller can reach it by accident.
+    """
+    resolved = Path(base).resolve()
+    canon = _CANONICAL_T.resolve()
+    if resolved == canon or canon in resolved.parents:
+        raise CanonicalProductionMutation(
+            f"{what} refuses to mutate canonical production at {resolved}. "
+            f"staging_root() defaults to that path, so a mutating caller that trusts the default "
+            f"reaches production. Pass an explicit disposable root outside the repository. "
+            f"Production remediation requires the frozen M052K mechanism under explicit "
+            f"authorisation; it is not reachable from here.")
+    return resolved
+
+
 def _run(argv: list[str], timeout: int = 120) -> subprocess.CompletedProcess:
     """Run a command with an explicit argv and no shell.
 
@@ -157,6 +232,7 @@ def apply_boundary(
     Users:(M)`` converted to an explicit ACE, which the subject would still hold.
     """
     base = staging_root(root)
+    _refuse_canonical_production(base, "apply_boundary")
     operator = operator or os.environ.get("USERNAME") or "operator"
 
     created = []
@@ -606,9 +682,22 @@ def deploy_artifact(
 
     COPY semantics throughout. The source is never moved or modified; a failed copy
     is removed rather than left looking valid.
+
+    Production safety (M066/F1): ``root=None`` (or any other omitted/falsy root)
+    is refused outright -- it must never silently resolve to the canonical
+    production tree via :func:`staging_root`. An explicitly supplied root is
+    additionally passed through :func:`_refuse_canonical_production`, so neither
+    an omission nor an explicit canonical path can reach production from here.
     """
     timestamp = _now()
-    base = staging_root(root)
+    if not root:
+        raise CanonicalProductionMutation(
+            "deploy_artifact refuses an omitted root: staging_root() with no "
+            "argument resolves to the canonical production subject_runtime tree. "
+            "Pass an explicit disposable root outside the repository. Production "
+            "remediation requires the frozen M052K mechanism under explicit "
+            "authorisation; it is not reachable from here.")
+    base = _refuse_canonical_production(staging_root(root), "deploy_artifact")
     source_path = Path(source)
 
     if not human_selected:
@@ -733,8 +822,24 @@ def recover(
     Refuses without ``confirm``, because this is the one function here that
     destroys anything. It touches nothing outside ``subject_runtime``: the
     originals were copied, never moved, so there is nothing else to restore.
+
+    Production safety (M066/F1): ``root=None`` (or any other omitted/falsy root)
+    is refused outright -- it must never silently resolve to the canonical
+    production tree via :func:`staging_root`, where :func:`shutil.rmtree` would
+    then delete it. An explicitly supplied root is additionally passed through
+    :func:`_refuse_canonical_production`. In particular
+    ``recover() -> root=None -> subject_runtime -> rmtree()`` is impossible:
+    the omitted-root refusal fires before ``confirm`` is even considered.
     """
-    base = staging_root(root)
+    if not root:
+        raise CanonicalProductionMutation(
+            "recover refuses an omitted root: staging_root() with no argument "
+            "resolves to the canonical production subject_runtime tree, and this "
+            "function deletes the resolved tree. Pass an explicit disposable root "
+            "outside the repository. Production remediation requires the frozen "
+            "M052K mechanism under explicit authorisation; it is not reachable "
+            "from here.")
+    base = _refuse_canonical_production(staging_root(root), "recover")
     if not confirm:
         return {
             "schema": "babylab/m015-recover/v1",

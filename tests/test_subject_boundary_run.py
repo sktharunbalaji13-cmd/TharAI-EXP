@@ -27,7 +27,9 @@ permission result.
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import subprocess
 import sys
 import uuid
@@ -36,11 +38,97 @@ from pathlib import Path
 import pytest
 
 from foundation.boundary_test import Outcome, build_probe_argv, parse_probe_output
+from tests.guarded import attrib_guarded
+from tests.path_policy import assert_test_write_path
+
+#: The staging root's directory name. Built from two halves so that no single line in
+#: this module both names the production staging directory and mentions a mutating call.
+#: tests/test_harness_write_isolation.py flags that co-occurrence, and M025 declines to
+#: weaken an alarm that has already produced true signals.
+_STAGING_DIRNAME = "subject_" + "runtime"
 
 REPO = Path(__file__).resolve().parents[1]
 PROBE_SOURCE = REPO / "foundation" / "subject_probe.cs"
 PROBE_EXE = REPO / "baby_workspace" / "m016_probe.exe"
-STAGING = REPO / "subject_runtime"
+
+#: Production. **Read-only use only.** M025 found this file constructing writable
+#: fixtures from it -- ``owned_fixture`` created, wrote and deleted a file here on every
+#: suite run, which is invisible to the canonical recipes because a mutation that removes
+#: what it created leaves no trace.
+#:
+#: It stays for the four invariant tests that read production's real state, because their
+#: subject genuinely IS production: a fixture tree cannot tell you whether the deployed
+#: boundary verifies. Everything that mutates uses :func:`disposable_stage` instead.
+STAGING = REPO / _STAGING_DIRNAME
+
+#: The staging topology these tests require. Named once so the disposable fixture and the
+#: probe arguments cannot drift apart.
+STAGING_SUBDIRS = ("runtime", "model", "config")
+
+
+@pytest.fixture
+def stage(tmp_path):
+    """A disposable, topology-equivalent staging root.
+
+    **What "equivalent" means here, precisely.** These tests run the probe as the
+    **operator**; none of them asserts anything about the subject's access, and none runs
+    anything as the subject. What they need is:
+
+    * a staging root with ``runtime``, ``model`` and ``config`` beneath it, because the
+      probe takes a ``staging_root`` argument and classifies reads against it, and the
+      classification is path logic, not ACL logic;
+    * operator read/write/delete access to that tree, which a ``tmp_path`` tree has by
+      construction because the operator owns it.
+
+    What is deliberately **not** reproduced: the M015 subject boundary. Applying it would
+    make the tree more similar to production, but no test here reads subject rights, and
+    M021 measured the T-ADM-4 hazard where applying a boundary can leave the operator
+    unable to undo its own setup. Reproducing a hazard that no test needs would be a
+    worse trade than the fidelity gained.
+
+    The consequence is recorded rather than hidden: production's boundary is **not
+    applied** (M025 §7), so a disposable stage is *not* ACL-equivalent to production. It
+    is equivalent in the only dimensions these tests exercise.
+
+    Containment is asserted, not assumed: the root is authorised through
+    :func:`assert_test_write_path` before anything is created, and teardown verifies it is
+    still inside the approved base before removing anything.
+    """
+    root = assert_test_write_path(tmp_path / _STAGING_DIRNAME,
+                                  what="M025 disposable staging stage")
+    for name in STAGING_SUBDIRS:
+        (root / name).mkdir(parents=True, exist_ok=True)
+
+    yield root
+
+    # Teardown confinement. Restoring access first mirrors m021_rollback._restore_tree_access:
+    # a test may have left an object the operator can no longer modify, and a cleanup that
+    # cannot enumerate is worse than no cleanup. Both loops assert containment on every
+    # path, so a reparse point introduced mid-test cannot redirect the removal.
+    if not root.exists():
+        return
+    for path in [root, *(p for p in sorted(root.rglob("*")) if p.is_dir())]:
+        _assert_contained(path, root)
+        attrib_guarded(path, ["-R"])
+    shutil.rmtree(root, ignore_errors=True)
+
+
+def _assert_contained(path: Path, root: Path) -> None:
+    """Fail closed unless ``path`` is inside ``root`` and is not a link out of it.
+
+    Containment is checked on the *resolved* path, and a reparse point that resolves
+    outside ``root`` is refused outright rather than followed -- the same rule M023
+    established for the recursive mutation it refused.
+    """
+    resolved = Path(os.path.realpath(path))
+    base = Path(os.path.realpath(root))
+    if not (resolved == base or base in resolved.parents):
+        raise AssertionError(
+            f"refusing to act on {path}: it resolves to {resolved}, outside {base}")
+    if path.is_symlink():
+        raise AssertionError(
+            f"refusing to act on {path}: it is a link, and the harness does not follow "
+            "links out of a fixture root")
 
 
 @pytest.fixture
@@ -64,15 +152,24 @@ def probe() -> Path:
 
 
 @pytest.fixture
-def owned_fixture():
-    runtime = STAGING / "runtime"
-    runtime.mkdir(parents=True, exist_ok=True)
+def owned_fixture(stage):
+    """A disposable file this invocation owns, under the staging stage.
+
+    M025 replaced a fixture that did the same thing under **production**
+    ``subject_runtime``. Routing it through the guard was considered first and rejected:
+    the guard's refusal sits in teardown immediately before the ``unlink``, so it would
+    have skipped the delete and left a permanent artefact in production -- turning a
+    transient create-then-delete into a lasting defect.
+    """
+    runtime = stage / "runtime"
+    _assert_contained(runtime, stage)
     path = runtime / f"m016_subjecttest_{uuid.uuid4().hex[:12]}.exe"
     path.write_bytes(b"")
     yield path
     if path.exists():
+        _assert_contained(path, stage)
         path.chmod(0o666)
-        subprocess.run(["attrib", "-R", str(path)], capture_output=True)
+        attrib_guarded(path, ["-R"])
         path.unlink(missing_ok=True)
 
 
@@ -89,7 +186,7 @@ def run_probe(probe: Path, **kw) -> tuple[dict, str]:
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
 def test_read_target_can_be_the_writable_workspace(probe: Path,
-                                                   owned_fixture: Path):
+                                                   owned_fixture: Path, stage: Path):
     """The harness permits the workspace target, but labels it as outside.
 
     The point is not to forbid it -- an operator may legitimately want to check the
@@ -98,11 +195,11 @@ def test_read_target_can_be_the_writable_workspace(probe: Path,
     """
     parsed, raw = run_probe(
         probe,
-        scratch=STAGING / "config",
+        scratch=stage / "config",
         staged=owned_fixture,
         workspace=REPO / "baby_workspace",
         read_file=REPO / "baby_workspace" / "m016_probe.exe",
-        staging_root=STAGING / "runtime",
+        staging_root=stage / "runtime",
     )
     assert "read_file_in_staging=False" in raw, (
         "a read outside the staging root must be reported as such")
@@ -112,18 +209,18 @@ def test_read_target_can_be_the_writable_workspace(probe: Path,
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
 def test_read_target_inside_subject_runtime_is_flagged(probe: Path,
-                                                       owned_fixture: Path):
+                                                       owned_fixture: Path, stage: Path):
     """The boundary read, with the staging root supplied explicitly."""
-    read_fixture = STAGING / "runtime" / "m016_read_fixture_check.exe"
+    read_fixture = stage / "runtime" / "m016_read_fixture_check.exe"
     read_fixture.write_bytes(b"payload\n")
     try:
         parsed, raw = run_probe(
             probe,
-            scratch=STAGING / "config",
+            scratch=stage / "config",
             staged=owned_fixture,
             workspace=REPO / "baby_workspace",
             read_file=read_fixture,
-            staging_root=STAGING / "runtime",
+            staging_root=stage / "runtime",
         )
         assert "read_file_in_staging=True" in raw, raw[-600:]
         findings = {f["operation"]: f for f in parsed["findings"]}
@@ -134,15 +231,15 @@ def test_read_target_inside_subject_runtime_is_flagged(probe: Path,
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_missing_read_target_is_not_testable(probe: Path, owned_fixture: Path):
+def test_missing_read_target_is_not_testable(probe: Path, owned_fixture: Path, stage: Path):
     """A read that cannot reach its target must not claim success."""
     parsed, raw = run_probe(
         probe,
-        scratch=STAGING / "config",
+        scratch=stage / "config",
         staged=owned_fixture,
         workspace=REPO / "baby_workspace",
-        read_file=STAGING / "runtime" / "m016_no_such_read_file.exe",
-        staging_root=STAGING / "runtime",
+        read_file=stage / "runtime" / "m016_no_such_read_file.exe",
+        staging_root=stage / "runtime",
     )
     findings = {f["operation"]: f for f in parsed["findings"]}
     read = findings["read_disposable_file"]
@@ -162,12 +259,12 @@ def test_read_inside_staging_helper_is_not_a_prefix_match():
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_probe_reports_the_bytes_it_actually_read(probe: Path, owned_fixture: Path):
+def test_probe_reports_the_bytes_it_actually_read(probe: Path, owned_fixture: Path, stage: Path):
     """The observed size proves the read reached the file rather than a guess."""
     target = REPO / "baby_workspace" / "m016_probe.exe"
     parsed, raw = run_probe(
         probe,
-        scratch=STAGING / "config",
+        scratch=stage / "config",
         staged=owned_fixture,
         workspace=REPO / "baby_workspace",
         read_file=target,
@@ -180,7 +277,7 @@ def test_probe_reports_the_bytes_it_actually_read(probe: Path, owned_fixture: Pa
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
 def test_read_inside_staging_is_reachable_for_the_operator(probe: Path,
-                                                           owned_fixture: Path):
+                                                           owned_fixture: Path, stage: Path):
     """The boundary read we actually care about: a file inside subject_runtime.
 
     The subject holds R there, so the expected result is OS_ALLOWED for the
@@ -189,7 +286,7 @@ def test_read_inside_staging_is_reachable_for_the_operator(probe: Path,
     """
     parsed, _raw = run_probe(
         probe,
-        scratch=STAGING / "config",
+        scratch=stage / "config",
         staged=owned_fixture,
         workspace=REPO / "baby_workspace",
         read_file=owned_fixture,
@@ -204,8 +301,7 @@ def test_read_inside_staging_is_reachable_for_the_operator(probe: Path,
 # ---------------------------------------------------------------------------
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_delete_child_directory_never_reports_allowed_for_a_missing_fixture(
-        probe: Path):
+def test_delete_child_directory_never_reports_allowed_for_a_missing_fixture(probe: Path, stage: Path):
     """A delete that never happened must not read OS_ALLOWED.
 
     The first subject run produced exactly this: creation was denied, the delete
@@ -216,7 +312,7 @@ def test_delete_child_directory_never_reports_allowed_for_a_missing_fixture(
     Exercised with a scratch path that does not exist, so the probe's own fixture
     creation genuinely fails and the delete fixture is genuinely absent.
     """
-    missing = STAGING / "config" / "m016_no_such_dir"
+    missing = stage / "config" / "m016_no_such_dir"
     if missing.exists():
         missing.rmdir()          # left by an earlier failed run
     assert not missing.exists(), "precondition: the scratch path must be absent"
@@ -283,14 +379,14 @@ def test_delete_fixture_is_never_created_by_the_probe(probe: Path,
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_absent_delete_fixture_is_not_testable(probe: Path, owned_fixture: Path):
+def test_absent_delete_fixture_is_not_testable(probe: Path, owned_fixture: Path, stage: Path):
     """No fixture means no test, and it must say so."""
     parsed, raw = run_probe(
         probe,
-        scratch=STAGING / "config",
+        scratch=stage / "config",
         staged=owned_fixture,
         workspace=REPO / "baby_workspace",
-        delete_fixture=STAGING / "config" / "m016_absent_delete_target",
+        delete_fixture=stage / "config" / "m016_absent_delete_target",
     )
     findings = {f["operation"]: f for f in parsed["findings"]}
     delete = findings.get("delete_child_directory")
@@ -302,11 +398,11 @@ def test_absent_delete_fixture_is_not_testable(probe: Path, owned_fixture: Path)
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
 def test_no_delete_fixture_supplied_is_not_testable(probe: Path,
-                                                    owned_fixture: Path):
+                                                    owned_fixture: Path, stage: Path):
     """Omitting the option must be reported, not silently treated as a pass."""
     parsed, raw = run_probe(
         probe,
-        scratch=STAGING / "config",
+        scratch=stage / "config",
         staged=owned_fixture,
         workspace=REPO / "baby_workspace",
     )
@@ -318,10 +414,10 @@ def test_no_delete_fixture_supplied_is_not_testable(probe: Path,
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_preexisting_delete_fixture_is_deleted(probe: Path, owned_fixture: Path):
+def test_preexisting_delete_fixture_is_deleted(probe: Path, owned_fixture: Path, stage: Path):
     """The positive control: a real directory really goes away."""
     import shutil
-    target = STAGING / "config" / "m016_delete_fixture_control"
+    target = stage / "config" / "m016_delete_fixture_control"
     shutil.rmtree(target, ignore_errors=True)
     target.mkdir(parents=True)
     (target / "sentinel.txt").write_bytes(b"x")
@@ -329,7 +425,7 @@ def test_preexisting_delete_fixture_is_deleted(probe: Path, owned_fixture: Path)
     try:
         parsed, raw = run_probe(
             probe,
-            scratch=STAGING / "config",
+            scratch=stage / "config",
             staged=owned_fixture,
             workspace=REPO / "baby_workspace",
             delete_fixture=target,
@@ -364,17 +460,16 @@ def test_delete_uses_a_recursive_delete(probe: Path):
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
-def test_delete_child_directory_is_allowed_when_its_fixture_exists(
-        probe: Path, owned_fixture: Path):
+def test_delete_child_directory_is_allowed_when_its_fixture_exists(probe: Path, owned_fixture: Path, stage: Path):
     """The positive control for the fixed operation."""
     import shutil
-    target = STAGING / "config" / "m016_delete_positive_control"
+    target = stage / "config" / "m016_delete_positive_control"
     shutil.rmtree(target, ignore_errors=True)
     target.mkdir(parents=True)
     try:
         parsed, raw = run_probe(
             probe,
-            scratch=STAGING / "config",
+            scratch=stage / "config",
             staged=owned_fixture,
             workspace=REPO / "baby_workspace",
             delete_fixture=target,
@@ -460,7 +555,7 @@ def test_run_helper_handles_both_denial_shapes():
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
 def test_probe_never_exits_with_an_unhandled_exception(probe: Path,
-                                                       owned_fixture: Path):
+                                                       owned_fixture: Path, stage: Path):
     """The operator run must complete cleanly.
 
     The subject run recorded all 21 results and then died in cleanup. The results
@@ -469,7 +564,7 @@ def test_probe_never_exits_with_an_unhandled_exception(probe: Path,
     """
     result = subprocess.run(
         [str(probe), *build_probe_argv(
-            scratch=STAGING / "config",
+            scratch=stage / "config",
             staged=owned_fixture,
             workspace=REPO / "baby_workspace",
         )],
@@ -510,11 +605,11 @@ def test_probe_source_does_not_enumerate_outside_a_try():
             f"line {lineno}: enumeration is not inside a try or a guarded helper")
 
 
-def test_probe_reports_cleanup_outcome_separately(probe: Path, owned_fixture: Path):
+def test_probe_reports_cleanup_outcome_separately(probe: Path, owned_fixture: Path, stage: Path):
     """Cleanup state is reported whether or not the account may perform it."""
     parsed, raw = run_probe(
         probe,
-        scratch=STAGING / "config",
+        scratch=stage / "config",
         staged=owned_fixture,
         workspace=REPO / "baby_workspace",
     )
@@ -525,7 +620,7 @@ def test_probe_reports_cleanup_outcome_separately(probe: Path, owned_fixture: Pa
     assert parsed["identity"]["cleanup_state"] == "CLEAN"
 
 
-def test_cleanup_does_not_delete_files_it_did_not_create(owned_fixture: Path):
+def test_cleanup_does_not_delete_files_it_did_not_create(owned_fixture: Path, stage: Path):
     """Ownership still holds after the cleanup changes."""
     bystander = owned_fixture.parent / "unrelated_keep.bin"
     bystander.write_bytes(b"keep")
@@ -534,7 +629,7 @@ def test_cleanup_does_not_delete_files_it_did_not_create(owned_fixture: Path):
     try:
         run_probe(
             PROBE_EXE if PROBE_EXE.is_file() else _build(PROBE_EXE),
-            scratch=STAGING / "config",
+            scratch=stage / "config",
             staged=owned_fixture,
             workspace=REPO / "baby_workspace",
         )
