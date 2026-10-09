@@ -46,6 +46,18 @@ weights.** `python -m birth.real_model_test` reports `NOT_CONFIGURED` and exits
 non-zero, which is the correct result on a fresh installation. The laboratory
 never chooses a foundation model for you: no search, no fallback, no download.
 
+## Later milestones (M052–M067)
+
+Recovery governance, production recovery, readiness reviews, and the
+developmental-boundary decision are recorded under `docs/evidence/` and
+`docs/m052m/`. Current state: the M052M accidental ACE was removed under
+HUMAN-signed authorization (M057, verified); D3 Gate 1 CLOSED; Gate 2 CLOSED;
+subject NOT LAUNCHED; no model selected or deployed.
+
+- [Project status dashboard](docs/m067-status-dashboard.html) — progress by
+  track, workstream map, milestone table, gates, open human decisions
+  (static, read-only; evidence dated per milestone).
+
 ## Requirements
 
 Windows 11 and Python 3.14+. No third-party packages are required; `pytest` is
